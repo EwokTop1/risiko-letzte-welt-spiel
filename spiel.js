@@ -1278,7 +1278,12 @@ const KAMPAGNE_EPISODEN = [
     nr: 1, name: "Erste Konflikte",
     zielText: "3 Regionen erobern",
     ziel: { erobern: 3 },
-    startRessourcen: { metall: 4, nahrung: 4, treibstoff: 4, energie: 8 },
+    // Energie bewusst auf 10 statt der ursprünglich anteilig berechneten 8 -- Farm (5
+    // Energie) und Kraftwerk (5 Energie, die einzige Energiequelle im Spiel) passen so
+    // beide in den ersten Bauzug. Bei 8 blieb nach der Farm nur Energie 3 übrig, das
+    // Kraftwerk war für den Rest der Episode unerreichbar. Per Playtest gefunden
+    // (16.09.2026, mit dir bestätigt): Energie blieb 9 Runden lang exakt bei 3 hängen.
+    startRessourcen: { metall: 4, nahrung: 4, treibstoff: 4, energie: 10 },
     belohnung: { ressourcen: { metall: 1, nahrung: 1, treibstoff: 1, energie: 2 } },
   },
   {
