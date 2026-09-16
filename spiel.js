@@ -1030,7 +1030,18 @@ if (typeof NETZWERK !== "undefined") {
 // Kampf-/Kostenlogik garantiert identisch bleibt.
 const BOT_ANGRIFFS_SCHWELLE = 2; // eigene Truppen müssen mind. doppelt so hoch sein wie die des Ziels
 const BOT_ENERGIE_PUFFER = 20; // Reserve, die Sondermechaniken nicht antasten sollen
-const BOT_WIRTSCHAFT_TYPEN = ["mine", "farm", "kraftwerk", "raffinerie"];
+// Reihenfolge per Playtest ermittelt (16.09.2026), zweimal korrigiert:
+// 1) Farm zuerst: Farm kostet 1 Nahrung, die einzige Ressource, die "Der Bruch" aktiv
+//    wegfrisst (-1/Runde je ungeschütztem Bruch-Gebiet, kein anderer Nahrungs-Zufluss
+//    existiert). Baut der Bot die Farm nicht, solange noch Start-Nahrung übrig ist, fällt
+//    Nahrung auf 0 und bleibt für immer dort -- ohne Farm nie wieder Nahrung, ohne Nahrung
+//    nie wieder Farm. Metall (fürs Kraftwerk unkritisch) hat kein Gegenstück zu dieser
+//    Kontamination und ist dadurch weniger dringend.
+// 2) Kraftwerk danach: das einzige Energie-Gebäude, und jedes Gebäude kostet Energie. Erst
+//    Mine bauen (wie ursprünglich) verbraucht die Start-Energie (10) komplett, bevor das
+//    Kraftwerk je dran kommt -- ohne Energie-Nachschub kann der Bot danach nie wieder etwas
+//    bauen, keine Cybermarker kaufen und keine Sondermechaniken nutzen.
+const BOT_WIRTSCHAFT_TYPEN = ["farm", "kraftwerk", "mine", "raffinerie"];
 const BOT_GRENZ_VERTEIDIGUNG_TYPEN = ["flagstellung", "geschuetz", "schildgenerator"]; // Mauer bewusst ausgenommen (braucht Zielwahl)
 
 function botEigeneGebiete(spielerId) {
@@ -1059,8 +1070,12 @@ function botVerstaerkungVerteilen(spielerId) {
   }
 }
 
-// Priorität 1: pro fehlendem Wirtschaftsgebäudetyp eines bauen (irgendwo, wo es geht).
-// Priorität 2: Grenzgebiete ohne Verteidigungsgebäude eines der drei einfachen Typen geben.
+// Priorität 1: pro fehlendem Wirtschaftsgebäudetyp eines bauen, Kraftwerk zuerst (siehe
+// BOT_WIRTSCHAFT_TYPEN oben). Priorität 2: eigene, ungeschützte "Der Bruch"-Gebiete
+// dekontaminieren (bluten sonst dauerhaft Nahrung, siehe Kontamination-Regel oben) --
+// bewusst NACH Wirtschaft: die Dekontaminationsanlage kostet allein 10 Energie, vor dem
+// Kraftwerk gebaut wäre das dieselbe Energie-Sackgasse wie bei Mine/Farm zuerst. Per
+// Playtest gefunden (16.09.2026). Priorität 3: Grenzgebiete ohne Verteidigungsgebäude.
 function botBauen(spielerId) {
   let sicherheit = 0;
   let weiterBauen = true;
@@ -1080,6 +1095,17 @@ function botBauen(spielerId) {
       }
     }
 
+    const bruchOhneSchutz = eigene.find(
+      (t) => t.continentId === KONTAMINATION_KONTINENT && !hatAktivesGebaeude(t, "dekontaminationsanlage")
+        && kannBauen(spielerId, t.id, "dekontaminationsanlage")
+    );
+    if (bruchOhneSchutz) {
+      bauZiel = bruchOhneSchutz.id;
+      gebaeudeBauen("dekontaminationsanlage");
+      weiterBauen = true;
+      continue;
+    }
+
     const grenzOhneVerteidigung = eigene.filter(
       (t) => botIstGrenzgebiet(t) && !t.gebaeude.some((b) => BOT_GRENZ_VERTEIDIGUNG_TYPEN.includes(b.typ))
     );
@@ -1095,6 +1121,23 @@ function botBauen(spielerId) {
   }
   bauModus = false;
   bauZiel = null;
+}
+
+// Repariert beschädigte (durch Besitzwechsel inaktive) Gebäude auf eigenen Gebieten, sofern
+// bezahlbar. Per Playtest gefunden (16.09.2026): ohne diesen Schritt blieben nach Eroberungen
+// dauerhaft beschädigte Wirtschaftsgebäude stehen, die nie wieder produzierten.
+function botReparieren(spielerId) {
+  const eigene = botEigeneGebiete(spielerId);
+  let sicherheit = 0;
+  for (const t of eigene) {
+    t.gebaeude.forEach((b, i) => {
+      if (sicherheit >= 15 || !b.beschaedigt || b.reparaturBegonnen) return;
+      if (kannBezahlen(spielerId, reparaturKosten(b.typ))) {
+        reparieren(t.id, i);
+        sicherheit++;
+      }
+    });
+  }
 }
 
 function botCybermarkerKaufen(spielerId) {
@@ -1205,6 +1248,7 @@ function botZug(spielerId) {
   botRenderStumm = true;
   botVerstaerkungVerteilen(spielerId);
   phase = "spielzug";
+  botReparieren(spielerId);
   botBauen(spielerId);
   botCybermarkerKaufen(spielerId);
   botAngreifen(spielerId);
