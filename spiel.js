@@ -73,9 +73,16 @@ const GEBAEUDE_TYPEN = {
   geheimerstuetzpunkt: { code: "I08", name: "Geheimer Stützpunkt", kategorie: "infrastruktur", kosten: { metall: 2, energie: 15 }, effektAktiv: false, effektText: "1x/Spiel Angriff aus nicht angrenzendem Gebiet (Effekt folgt)" },
   orbitalrelais: { code: "I09", name: "Orbitalrelais", kategorie: "infrastruktur", kosten: { metall: 4, treibstoff: 2, energie: 25 }, effektAktiv: false, effektText: "Luftangriffe +1 Würfel, Konvois immun (Effekt folgt)" },
 
+  // Wirtschaft, Fortsetzung (W08 laut Mastertabelle). "Herrschaftsmarker"-Effekt ist im
+  // Regelwerk nicht definiert -- baubar, aber ohne eigene Spielwirkung außer als Zielgebiet
+  // für die Kampagne (Episode 7: "gegnerisches Hauptquartier erobern", siehe unten). Limit
+  // 1/Spieler ist ein eigener, plausibler Zusatz (ein "Hauptquartier" sollte nicht beliebig
+  // oft baubar sein), im Regelwerk nicht explizit festgelegt.
+  hauptquartier: { code: "W08", name: "Hauptquartier", kategorie: "wirtschaft", kosten: { metall: 3, energie: 15 }, limitProSpieler: 1, effektAktiv: false, effektText: "Herrschaftsmarker (Effekt nicht definiert) -- dient als Kampagnen-Zielgebiet (Episode 7)" },
+
   // Sondergebäude (kontinentgebunden)
   dekontaminationsanlage: { code: "S01", name: "Dekontaminationsanlage", kategorie: "sonder", kosten: { metall: 2, treibstoff: 1, energie: 10 }, effektAktiv: true, nurKontinent: "bruch", effektText: "Schützt dieses Gebiet vor der Kontamination in Der Bruch (-1 Nahrung/Runde)" },
-  orbitalstartrampe: { code: "S02", name: "Orbitalstartrampe", kategorie: "sonder", kosten: { metall: 5, treibstoff: 3, energie: 30 }, limitProSpieler: 1, effektAktiv: false, nurKontinent: "konstrukt", effektText: "Schaltet Zugang zum Orbitalring frei (Effekt folgt, braucht Orbitalring als echte Karte)" },
+  orbitalstartrampe: { code: "S02", name: "Orbitalstartrampe", kategorie: "sonder", kosten: { metall: 5, treibstoff: 3, energie: 30 }, limitProSpieler: 1, effektAktiv: false, nurKontinent: "konstrukt", effektText: "Schaltet Zugang zum Orbitalring frei (Effekt folgt, braucht Orbitalring als echte Karte). Baubar erst ab Kampagnen-Episode 6, außerhalb der Kampagne uneingeschränkt." },
 };
 
 // Kontamination: Gebiete in "Der Bruch" verlieren pro Runde 1 Nahrung, außer eine
@@ -166,24 +173,30 @@ function terrainSchattierung(basisHex, seedText) {
 
 // --- Zustand aufbauen ---
 const territorien = {}; // id -> {id, continentId, polygon, x, y, owner, truppen, terrainFarbe}
-let globalIndex = 0;
-KARTENDATEN.kontinente.forEach((k) => {
-  k.gebiete.forEach((g) => {
-    if (!g.polygon) return;
-    territorien[g.id] = {
-      id: g.id,
-      continentId: k.id,
-      polygon: g.polygon,
-      x: g.x,
-      y: g.y,
-      owner: SPIELER[globalIndex % 2].id,
-      truppen: START_TRUPPEN,
-      terrainFarbe: terrainSchattierung(KONTINENT_FARBE[k.id] ?? "#6a9b5e", g.id),
-      gebaeude: [], // [{typ, fertig, ziel?}] -- ziel nur bei Mauer (blockiertes Nachbargebiet), siehe GEBAEUDE_TYPEN
-    };
-    globalIndex++;
+
+// In eine Funktion ausgelagert, damit die Kampagne (kampagneStarten()) die Karte auf den
+// Testverteilung-Ausgangszustand zurücksetzen kann, ohne die Seite neu zu laden.
+function resetTerritorien() {
+  let globalIndex = 0;
+  KARTENDATEN.kontinente.forEach((k) => {
+    k.gebiete.forEach((g) => {
+      if (!g.polygon) return;
+      territorien[g.id] = {
+        id: g.id,
+        continentId: k.id,
+        polygon: g.polygon,
+        x: g.x,
+        y: g.y,
+        owner: SPIELER[globalIndex % 2].id,
+        truppen: START_TRUPPEN,
+        terrainFarbe: terrainSchattierung(KONTINENT_FARBE[k.id] ?? "#6a9b5e", g.id),
+        gebaeude: [], // [{typ, fertig, ziel?}] -- ziel nur bei Mauer (blockiertes Nachbargebiet), siehe GEBAEUDE_TYPEN
+      };
+      globalIndex++;
+    });
   });
-});
+}
+resetTerritorien();
 
 const adjazenz = new Map();
 function addAdj(a, b) {
@@ -406,6 +419,31 @@ function updatePanel() {
   const bauAuswahl = document.getElementById("bau-auswahl");
 
   ressourcenInfo.innerHTML = SPIELER.map((s) => `<div style="color:${s.farbe}">${s.name}: ${ressourcenText(s.id)}</div>`).join("");
+
+  const kampagneStatus = document.getElementById("kampagne-status");
+  const btnKampagneStarten = document.getElementById("btn-kampagne-starten");
+  if (kampagneStatus) {
+    if (!kampagne.aktiv) {
+      kampagneStatus.innerHTML = "Keine aktive Kampagne. Start setzt die Karte zurück, macht Spieler 2 zur KI und dich zu Spieler 1.";
+      btnKampagneStarten.textContent = "Kampagne starten";
+    } else {
+      const ep = kampagneAktuelleEpisode();
+      const f = kampagne.fortschritt;
+      const teile = [];
+      if (ep.ziel.erobern) teile.push(`Erobert ${f.erobert}/${ep.ziel.erobern}`);
+      if (ep.ziel.cyberangriffe) teile.push(`Cyberangriffe ${f.cyberangriffe}/${ep.ziel.cyberangriffe}`);
+      if (ep.ziel.belagerungen) teile.push(`Belagerungen ${f.belagerungen}/${ep.ziel.belagerungen}`);
+      if (ep.ziel.bombardierungen) teile.push(`Bombardierungen ${f.bombardierungen}/${ep.ziel.bombardierungen}`);
+      if (ep.ziel.reparaturen) teile.push(`Reparaturen ${f.reparaturen}/${ep.ziel.reparaturen}`);
+      if (ep.ziel.hauptquartier) teile.push(`Hauptquartier ${territorien[kampagne.hauptquartierGegner]?.owner === 1 ? "erobert" : "nicht erobert"}`);
+      if (ep.ziel.strategischeRegionenKontrollieren || ep.ziel.strategischeRegionenVerhindern) {
+        const eigene = kampagne.strategischeRegionen.filter((id) => territorien[id]?.owner === 1).length;
+        teile.push(`Strategische Regionen ${eigene}/${kampagne.strategischeRegionen.length}`);
+      }
+      kampagneStatus.innerHTML = `<b>Episode ${ep.nr}: ${ep.name}</b><br>${ep.zielText}<br>${teile.join(" · ")}`;
+      btnKampagneStarten.textContent = "Kampagne neu starten";
+    }
+  }
 
   const spielerName = SPIELER.find((s) => s.id === aktiverSpieler).name;
   if (phase === "verstaerkung") {
@@ -667,6 +705,9 @@ function kannBauen(spielerId, gebietId, typ) {
   if (t.gebaeude.some((b) => b.typ === typ)) return false;
   if (info.nurKontinent && t.continentId !== info.nurKontinent) return false;
   if (info.limitProSpieler && zaehleAlleGebaeude(spielerId, typ) >= info.limitProSpieler) return false;
+  // Kampagne (Episode 6, bestätigt 16.09.2026): S02 Orbitalstartrampe erst ab hier baubar.
+  // Außerhalb der Kampagne (Sandbox/Hotseat) gilt diese Sperre nicht.
+  if (typ === "orbitalstartrampe" && kampagne.aktiv && kampagneAktuelleEpisode().nr < 6) return false;
   return kannBezahlen(spielerId, info.kosten);
 }
 
@@ -698,6 +739,7 @@ function reparieren(gebietId, index) {
   if (typeof NETZWERK !== "undefined" && NETZWERK.istOnline()) {
     NETZWERK.sende({ typ: "reparieren", gebietId, index });
   }
+  if (kampagne.aktiv && aktiverSpieler === 1) { kampagne.fortschritt.reparaturen += 1; kampagnePruefen(); }
   render(); updatePanel();
 }
 
@@ -771,6 +813,11 @@ function belagerungAusfuehren() {
   if (!r.erobert) {
     belagerungEffektAuswahl = { gebietId: D.id };
   }
+  if (kampagne.aktiv && aktiverSpieler === 1) {
+    kampagne.fortschritt.belagerungen += 1;
+    if (r.erobert) kampagne.fortschritt.erobert += 1;
+    kampagnePruefen();
+  }
   belagerungModus = false; belagerungVon = null; belagerungZiel = null;
   render(); updatePanel();
 }
@@ -810,6 +857,7 @@ function bombardierungAusfuehren() {
   if (typeof NETZWERK !== "undefined" && NETZWERK.istOnline()) {
     NETZWERK.sende({ typ: "bombardierung", gebietId: D.id, dNeu: D.truppen });
   }
+  if (kampagne.aktiv && aktiverSpieler === 1) { kampagne.fortschritt.bombardierungen += 1; kampagnePruefen(); }
   bombardierungModus = false; bombardierungVon = null; bombardierungZiel = null;
   render(); updatePanel();
 }
@@ -902,6 +950,12 @@ function angriff() {
       aVerlust: r.aVerlust, dVerlust: r.dVerlust, aNeu: A.truppen, dNeu: D.truppen, dBesitzer: D.owner,
       erobert: r.erobert, verschoben: r.verschoben, cyberEingesetzt: r.cyberEingesetzt, gebaeudeD: D.gebaeude,
     });
+  }
+
+  if (kampagne.aktiv && aktiverSpieler === 1) {
+    if (r.erobert) kampagne.fortschritt.erobert += 1;
+    if (r.cyberEingesetzt) kampagne.fortschritt.cyberangriffe += 1;
+    kampagnePruefen();
   }
 
   if (r.erobert || A.truppen <= 1) { ausgewaehlt = null; ziel = null; }
@@ -1162,6 +1216,183 @@ function botZug(spielerId) {
   zugBeenden();
 }
 
+// --- Kampagne "Krieg der Schatten" (Phase 6) ---
+// Struktur aus Risiko_Kampagne_und_Regeln.md: 7 Episoden, Spieler 1 (Mensch) gegen
+// Spieler 2 (KI, siehe Phase 5). Läuft auf der bestehenden Karte weiter -- laut Doku
+// "behalten Spieler Ressourcen und Marker zwischen den Episoden", d.h. ein Episodenwechsel
+// setzt NICHT die Karte zurück, sondern schaltet nur ein neues Ziel frei und gewährt die in
+// der Kampagnentabelle genannte Belohnung obendrauf.
+//
+// Die "Startressourcen" pro Episode (Tabelle: 20/25/30/35/40/45) sind dort als EINE Zahl
+// angegeben, unser Spiel kennt aber 4 getrennte Ressourcentypen. Aufgeteilt im selben
+// Verhältnis wie der bisherige Standardstart (5/5/5/10 = 1:1:1:2) -- eigener, noch zu
+// bestätigender Vorschlag, da die Doku dazu keine Aufteilung nennt. Nur der Einstieg in
+// Episode 1 SETZT die Ressourcen fest; jeder weitere Übergang gewährt nur die "Belohnung"
+// (rechnerisch identisch, solange nichts ausgegeben wurde, aber konsistent mit "behalten").
+const KAMPAGNE_EPISODEN = [
+  {
+    nr: 1, name: "Erste Konflikte",
+    zielText: "3 Regionen erobern",
+    ziel: { erobern: 3 },
+    startRessourcen: { metall: 4, nahrung: 4, treibstoff: 4, energie: 8 },
+    belohnung: { ressourcen: { metall: 1, nahrung: 1, treibstoff: 1, energie: 2 } },
+  },
+  {
+    nr: 2, name: "Cybersturm",
+    zielText: "1 feindliches Gebiet per Cyberangriff angreifen (sabotieren) + 2 Regionen erobern",
+    ziel: { erobern: 2, cyberangriffe: 1 },
+    belohnung: { ressourcen: { metall: 1, nahrung: 1, treibstoff: 1, energie: 2 }, cybermarker: 1 },
+  },
+  {
+    nr: 3, name: "Belagerung & Bombardierung",
+    zielText: "1 Gebiet belagern, 1 Gebiet bombardieren, 2 Regionen erobern",
+    ziel: { erobern: 2, belagerungen: 1, bombardierungen: 1 },
+    belohnung: { ressourcen: { metall: 1, nahrung: 1, treibstoff: 1, energie: 2 }, cybermarker: 1 },
+  },
+  {
+    nr: 4, name: "Reparatur & Ressourcenmanagement",
+    zielText: "2 eigene Gebäude reparieren, 1 Region erobern",
+    ziel: { erobern: 1, reparaturen: 2 },
+    belohnung: { ressourcen: { metall: 1, nahrung: 1, treibstoff: 1, energie: 2 } },
+  },
+  {
+    nr: 5, name: "Spezialoperationen",
+    zielText: "Belagerung, Bombardierung und Cyberangriff je mind. 1x einsetzen, 3 Regionen erobern",
+    ziel: { erobern: 3, belagerungen: 1, bombardierungen: 1, cyberangriffe: 1 },
+    belohnung: { ressourcen: { metall: 1, nahrung: 1, treibstoff: 1, energie: 2 }, cybermarker: 1 },
+  },
+  {
+    nr: 6, name: "Fraktionskriege",
+    // "Strategische Regionen" sind im Regelwerk nicht definiert -- eigener Vorschlag
+    // (16.09.2026): die 2 Gebiete des Gegners mit den meisten Truppen bei Episodenbeginn.
+    zielText: "4 Regionen erobern und verhindern, dass der Gegner seine 2 stärksten Gebiete (Stand Episodenbeginn) weiter beide hält",
+    ziel: { erobern: 4, strategischeRegionenVerhindern: true },
+    belohnung: { ressourcen: { metall: 1, nahrung: 1, treibstoff: 1, energie: 2 } },
+  },
+  {
+    nr: 7, name: "Finale Operation",
+    // Hauptquartier (W08) wird bei Bedarf automatisch auf dem stärksten Gebiet des Gegners
+    // platziert, siehe kampagneEpisodeVorbereiten -- der Bot baut es sonst nicht selbst.
+    zielText: "Gegnerisches Hauptquartier erobern und beide strategischen Regionen aus Episode 6 kontrollieren",
+    ziel: { hauptquartier: true, strategischeRegionenKontrollieren: true },
+  },
+];
+
+let kampagne = {
+  aktiv: false,
+  episodeIndex: 0,
+  fortschritt: { erobert: 0, cyberangriffe: 0, belagerungen: 0, bombardierungen: 0, reparaturen: 0 },
+  strategischeRegionen: [],
+  hauptquartierGegner: null,
+};
+const botCheckboxes = {}; // spielerId -> Checkbox-Element, siehe spieler-auswahl-Aufbau unten
+
+function kampagneAktuelleEpisode() {
+  return KAMPAGNE_EPISODEN[kampagne.episodeIndex];
+}
+
+function kampagneEpisodeVorbereiten(index, istStart) {
+  const ep = KAMPAGNE_EPISODEN[index];
+  kampagne.fortschritt = { erobert: 0, cyberangriffe: 0, belagerungen: 0, bombardierungen: 0, reparaturen: 0 };
+
+  if (istStart && ep.startRessourcen) {
+    SPIELER.find((s) => s.id === 1).ressourcen = { ...ep.startRessourcen };
+  }
+
+  if (ep.nr === 6) {
+    const gegnerGebiete = Object.values(territorien).filter((t) => t.owner === 2).sort((a, b) => b.truppen - a.truppen);
+    kampagne.strategischeRegionen = gegnerGebiete.slice(0, 2).map((t) => t.id);
+    log(`Episode 6: strategische Regionen des Gegners festgelegt: ${kampagne.strategischeRegionen.join(", ")}.`);
+  }
+
+  if (ep.nr === 7) {
+    let hq = Object.values(territorien).find((t) => t.owner === 2 && t.gebaeude.some((b) => b.typ === "hauptquartier"));
+    if (!hq) {
+      const staerkstes = Object.values(territorien).filter((t) => t.owner === 2).sort((a, b) => b.truppen - a.truppen)[0];
+      if (staerkstes) {
+        staerkstes.gebaeude.push({ typ: "hauptquartier", fertig: true });
+        hq = staerkstes;
+        log(`Episode 7: ${staerkstes.id} automatisch als gegnerisches Hauptquartier bestimmt (Bot baut es nicht von selbst).`);
+      }
+    }
+    kampagne.hauptquartierGegner = hq ? hq.id : null;
+  }
+}
+
+function kampagneStarten() {
+  resetTerritorien();
+  SPIELER.forEach((s) => { s.ressourcen = { metall: 0, nahrung: 0, treibstoff: 0, energie: 0 }; s.cybermarker = 0; });
+  SPIELER.find((s) => s.id === 1).istBot = false;
+  SPIELER.find((s) => s.id === 2).istBot = true;
+  Object.entries(botCheckboxes).forEach(([id, cb]) => { cb.checked = SPIELER.find((s) => s.id === Number(id)).istBot; });
+
+  kampagne.aktiv = true;
+  kampagne.episodeIndex = 0;
+  kampagne.strategischeRegionen = [];
+  kampagne.hauptquartierGegner = null;
+  kampagneEpisodeVorbereiten(0, true);
+
+  const ep = kampagneAktuelleEpisode();
+  log(`Kampagne "Krieg der Schatten" gestartet — Episode ${ep.nr}: ${ep.name}. Ziel: ${ep.zielText}.`, true);
+  rundenStart(1);
+}
+
+function kampagneEpisodeAbschliessen() {
+  const ep = kampagneAktuelleEpisode();
+  log(`Episode ${ep.nr} "${ep.name}" abgeschlossen!`, true);
+  if (ep.belohnung) {
+    if (ep.belohnung.ressourcen) Object.entries(ep.belohnung.ressourcen).forEach(([k, v]) => gutschreiben(1, k, v));
+    if (ep.belohnung.cybermarker) {
+      const s = SPIELER.find((sp) => sp.id === 1);
+      s.cybermarker = Math.min(CYBERMARKER_MAX, s.cybermarker + ep.belohnung.cybermarker);
+    }
+  }
+  if (kampagne.episodeIndex + 1 >= KAMPAGNE_EPISODEN.length) {
+    kampagne.aktiv = false;
+    log(`Kampagne "Krieg der Schatten" abgeschlossen — alle 7 Episoden gemeistert!`, true);
+    return;
+  }
+  kampagne.episodeIndex += 1;
+  kampagneEpisodeVorbereiten(kampagne.episodeIndex, false);
+  const naechste = kampagneAktuelleEpisode();
+  log(`Episode ${naechste.nr}: ${naechste.name}. Ziel: ${naechste.zielText}.`, true);
+}
+
+// Nach jeder relevanten Aktion des menschlichen Spielers (Spieler 1) aufgerufen, siehe
+// angriff(), belagerungAusfuehren(), bombardierungAusfuehren(), reparieren().
+function kampagnePruefen() {
+  if (!kampagne.aktiv) return;
+  const ep = kampagneAktuelleEpisode();
+  const f = kampagne.fortschritt;
+  let erfuellt = true;
+  if (ep.ziel.erobern && f.erobert < ep.ziel.erobern) erfuellt = false;
+  if (ep.ziel.cyberangriffe && f.cyberangriffe < ep.ziel.cyberangriffe) erfuellt = false;
+  if (ep.ziel.belagerungen && f.belagerungen < ep.ziel.belagerungen) erfuellt = false;
+  if (ep.ziel.bombardierungen && f.bombardierungen < ep.ziel.bombardierungen) erfuellt = false;
+  if (ep.ziel.reparaturen && f.reparaturen < ep.ziel.reparaturen) erfuellt = false;
+  if (ep.ziel.strategischeRegionenVerhindern) {
+    const gegnerHaeltBeide = kampagne.strategischeRegionen.length === 2
+      && kampagne.strategischeRegionen.every((id) => territorien[id]?.owner === 2);
+    if (gegnerHaeltBeide) erfuellt = false;
+  }
+  if (ep.ziel.hauptquartier) {
+    if (!kampagne.hauptquartierGegner || territorien[kampagne.hauptquartierGegner]?.owner !== 1) erfuellt = false;
+  }
+  if (ep.ziel.strategischeRegionenKontrollieren) {
+    const alleEigen = kampagne.strategischeRegionen.length === 2
+      && kampagne.strategischeRegionen.every((id) => territorien[id]?.owner === 1);
+    if (!alleEigen) erfuellt = false;
+  }
+  if (erfuellt) kampagneEpisodeAbschliessen();
+
+  if (Object.values(territorien).filter((t) => t.owner === 1).length === 0) {
+    kampagne.aktiv = false;
+    log(`Kampagne verloren — keine eigenen Gebiete mehr.`, true);
+  }
+}
+
+document.getElementById("btn-kampagne-starten").addEventListener("click", kampagneStarten);
+
 document.getElementById("btn-angriff").addEventListener("click", angriff);
 document.getElementById("btn-abbrechen").addEventListener("click", () => {
   ausgewaehlt = null; ziel = null; verschiebenQuelle = null; bauZiel = null; mauerZielAuswahl = null; render(); updatePanel();
@@ -1237,6 +1468,7 @@ SPIELER.forEach((s) => {
   });
   botLabel.appendChild(botCheckbox);
   botLabel.appendChild(document.createTextNode("KI"));
+  botCheckboxes[s.id] = botCheckbox;
 
   zeile.appendChild(btn);
   zeile.appendChild(botLabel);
