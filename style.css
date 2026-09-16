@@ -39,19 +39,19 @@ main{display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap}
 .board-wrap{
   flex:1 1 640px;
   min-width:300px;
-  background:var(--surface);
+  background:radial-gradient(ellipse at 50% 40%, #163049 0%, #0c1b2c 55%, #081422 100%);
   border:1px solid var(--border);
   border-radius:12px;
   padding:10px;
 }
 #board{width:100%;height:auto;display:block}
 
-.gebiet{stroke:rgba(9,12,16,.7);stroke-width:.7;cursor:pointer;transition:filter .1s}
-.gebiet:hover{filter:brightness(1.25)}
-.gebiet.ausgewaehlt{stroke:#fff;stroke-width:2.4}
-.gebiet.ziel{stroke:#fff;stroke-width:2.4;stroke-dasharray:3 2}
+.gebiet{stroke-width:1.6;cursor:pointer;transition:filter .1s;paint-order:stroke fill}
+.gebiet:hover{filter:brightness(1.2) saturate(1.15)}
+.gebiet.ausgewaehlt{stroke:#fff !important;stroke-width:3}
+.gebiet.ziel{stroke:#fff !important;stroke-width:3;stroke-dasharray:3 2}
 
-.cont-border{fill:none;stroke:rgba(255,255,255,.15);stroke-width:1.6;pointer-events:none}
+.cont-border{fill:none;stroke:rgba(8,14,22,.55);stroke-width:2.4;pointer-events:none}
 
 .truppen{
   font-family:'Courier New',monospace;
@@ -107,6 +107,14 @@ button{
   cursor:pointer;
 }
 button:disabled{background:transparent;color:var(--text-muted);cursor:not-allowed}
+#btn-verschieben.aktiv{background:var(--p1);color:#fff}
+
+#phase-info{font-size:13px;color:var(--text-muted);line-height:1.5;margin-bottom:10px}
+#phase-info b{color:var(--text)}
+
+#ressourcen-info,#cyber-info{font-size:12px;line-height:1.6}
+#bau-auswahl,#belagerung-effekt-auswahl,#reparatur-liste{display:flex;flex-direction:column;gap:5px;margin-top:6px;max-height:260px;overflow-y:auto}
+#bau-auswahl button,#belagerung-effekt-auswahl button,#reparatur-liste button{font-size:11px;padding:6px 8px;text-align:left;width:100%}
 
 #log{
   font-family:'Courier New',monospace;

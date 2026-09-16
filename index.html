@@ -12,7 +12,7 @@
 <body>
   <header>
     <h1>Risiko – Letzte Welt <span class="tag">Grundgerüst · Testmodus</span></h1>
-    <p class="hinweis">Platzhalter-Karte, Platzhalter-Verteilung (abwechselnd Spieler 1/2). Nur Standard-Risiko-Kampf, noch kein Rundensystem, keine Ressourcen, keine Sondermechaniken.</p>
+    <p class="hinweis">Platzhalter-Karte, Platzhalter-Verteilung (abwechselnd Spieler 1/2). Standard-Risiko-Kampf mit Rundensystem, Ressourcensystem, alle 23 Gebäude der Mastertabelle baubar, plus Sondermechaniken: Cyberangriffsmarker, Belagerung, Bombardierung, Reparatur nach Besitzwechsel. Ein Teil der Verteidigungs-/Infrastruktureffekte ist noch nicht verdrahtet (im Bau-Menü als "Effekt folgt" markiert).</p>
   </header>
 
   <main>
@@ -33,6 +33,41 @@
       <div class="block">
         <h2>Aktiver Spieler</h2>
         <div id="spieler-auswahl"></div>
+      </div>
+
+      <div class="block">
+        <h2>Ressourcen</h2>
+        <div id="ressourcen-info"></div>
+      </div>
+
+      <div class="block">
+        <h2>Runde</h2>
+        <div id="phase-info"></div>
+        <button id="btn-bauen" disabled>Bauen</button>
+        <div id="bau-auswahl" hidden></div>
+        <button id="btn-verschieben" disabled>Verschieben</button>
+        <button id="btn-zug-beenden" disabled>Zug beenden</button>
+      </div>
+
+      <div class="block">
+        <h2>Sondermechaniken</h2>
+        <div id="cyber-info"></div>
+        <button id="btn-cyber-kaufen" disabled>Cybermarker kaufen (25 Energie)</button>
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;margin-top:6px">
+          <input type="checkbox" id="chk-cyber-einsetzen"> Bei nächstem Angriff einsetzen
+        </label>
+        <hr style="border-color:var(--border);margin:10px 0">
+        <button id="btn-belagerung" disabled>Belagerung</button>
+        <button id="btn-belagerung-ausfuehren" hidden>Belagerung auslösen</button>
+        <div id="belagerung-effekt-auswahl" hidden></div>
+        <hr style="border-color:var(--border);margin:10px 0">
+        <button id="btn-bombardierung" disabled>Bombardierung (15 Energie)</button>
+        <button id="btn-bombardierung-ausfuehren" hidden>Bombardierung auslösen</button>
+      </div>
+
+      <div class="block" id="reparatur-block" hidden>
+        <h2>Reparatur</h2>
+        <div id="reparatur-liste"></div>
       </div>
 
       <div class="block">
@@ -69,7 +104,7 @@
         mpStatus.textContent = "Spiel erstellt, warte auf Verbindung …";
       } else if (zustand === "verbunden") {
         mpStatus.textContent = `Verbunden — du bist Spieler ${NETZWERK.meineRolle()}.`;
-        aktiverSpieler = NETZWERK.meineRolle();
+        setMeineRolle(NETZWERK.meineRolle());
         document.getElementById("spieler-auswahl").style.display = "none";
         if (typeof render === "function") { render(); updatePanel(); }
       } else if (zustand === "getrennt") {
