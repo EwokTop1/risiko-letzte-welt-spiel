@@ -1,4 +1,7 @@
-const CACHE_NAME = "letzte-welt-v1";
+// Bei jeder inhaltlichen Änderung an DATEIEN (oder wenn erzwungen werden soll, dass
+// installierte PWAs den alten Cache verwerfen) diese Versionsnummer hochzählen -- der
+// activate-Handler unten löscht dann automatisch alle älteren Caches.
+const CACHE_NAME = "letzte-welt-v2";
 const DATEIEN = [
   "./index.html",
   "./style.css",
@@ -23,8 +26,17 @@ self.addEventListener("activate", (e) => {
   self.clients.claim();
 });
 
+// Network-first: Updates werden sofort sichtbar, sobald online. Der Cache wird bei jedem
+// erfolgreichen Abruf aktualisiert und dient nur noch als Fallback für den eigentlichen
+// Zweck dieser PWA -- Offline-Spielbarkeit, wenn kein Netzwerk erreichbar ist.
 self.addEventListener("fetch", (e) => {
   e.respondWith(
-    caches.match(e.request).then((treffer) => treffer || fetch(e.request))
+    fetch(e.request)
+      .then((antwort) => {
+        const kopie = antwort.clone();
+        caches.open(CACHE_NAME).then((cache) => cache.put(e.request, kopie));
+        return antwort;
+      })
+      .catch(() => caches.match(e.request))
   );
 });
