@@ -85,6 +85,50 @@ const GEBAEUDE_TYPEN = {
   orbitalstartrampe: { code: "S02", name: "Orbitalstartrampe", kategorie: "sonder", kosten: { metall: 5, treibstoff: 3, energie: 30 }, limitProSpieler: 1, effektAktiv: false, nurKontinent: "konstrukt", effektText: "Schaltet Zugang zum Orbitalring frei (Effekt folgt, braucht Orbitalring als echte Karte). Baubar erst ab Kampagnen-Episode 6, außerhalb der Kampagne uneingeschränkt." },
 };
 
+// Design-Feinschliff (16.09.2026): ein Icon pro Gebäudetyp statt nur des Textcodes im
+// Bau-Menü. Bewusst nur einfache Grundformen (Kreis/Rechteck/Linie/Polygon, kaum Kurven),
+// damit die Icons auch ohne visuelle Zwischenprüfung zuverlässig rendern. Form gruppiert
+// nach Kategorie (Kreis-Ecken=Wirtschaft, Schild/Burg=Verteidigung, Turm/Kiste=Infrastruktur,
+// Diamant=Sonder), Farbe ebenfalls nach Kategorie über CSS (.icon-<kategorie>).
+const GEBAEUDE_ICON_PFADE = {
+  mine: '<polygon points="12,6 18,17 6,17"/><circle cx="12" cy="13" r="1.3" fill="currentColor" stroke="none"/>',
+  farm: '<path d="M6 18 C6 10 10 6 18 6 C18 14 14 18 6 18 Z"/><line x1="7" y1="17" x2="17" y2="7"/>',
+  kraftwerk: '<polygon points="13,5 8,13 11,13 10,19 16,10 13,10"/>',
+  raffinerie: '<polygon points="12,5 16,13 12,19 8,13"/>',
+  hauptquartier: '<line x1="8" y1="19" x2="8" y2="6"/><polygon points="8,6 17,9 8,12"/>',
+
+  mauer: '<rect x="4" y="8" width="7" height="4"/><rect x="13" y="8" width="7" height="4"/><rect x="4" y="13" width="3" height="4"/><rect x="9" y="13" width="7" height="4"/><rect x="18" y="13" width="2" height="4"/>',
+  minenguertel: '<circle cx="12" cy="13" r="3"/><line x1="12" y1="8" x2="12" y2="10"/><line x1="12" y1="16" x2="12" y2="18"/><line x1="7" y1="13" x2="9" y2="13"/><line x1="15" y1="13" x2="17" y2="13"/>',
+  flagstellung: '<polyline points="6,15 12,9 18,15" fill="none"/>',
+  geschuetz: '<rect x="6" y="10" width="12" height="3"/><circle cx="6" cy="16" r="3"/>',
+  radar: '<circle cx="12" cy="13" r="2" fill="currentColor" stroke="none"/><circle cx="12" cy="13" r="5" fill="none"/><circle cx="12" cy="13" r="8" fill="none"/>',
+  artilleriestellung: '<polygon points="12,5 14,11 20,13 14,15 12,21 10,15 4,13 10,11"/>',
+  flugabwehr: '<polyline points="8,14 12,7 16,14" fill="none"/><line x1="12" y1="7" x2="12" y2="19"/>',
+  kuestenbatterie: '<rect x="9" y="6" width="6" height="6"/><polyline points="4,16 7,14 10,16 13,14 16,16 19,14" fill="none"/>',
+  schildgenerator: '<polygon points="12,5 18,8 18,13 12,20 6,13 6,8" fill="none"/>',
+  megafestung: '<rect x="6" y="11" width="12" height="8"/><rect x="6" y="7" width="3" height="4"/><rect x="10.5" y="7" width="3" height="4"/><rect x="15" y="7" width="3" height="4"/>',
+
+  aussenposten: '<polygon points="12,7 18,18 6,18" fill="none"/><line x1="12" y1="7" x2="12" y2="18"/>',
+  kontrollpunkt: '<line x1="6" y1="18" x2="6" y2="10"/><line x1="18" y1="18" x2="18" y2="10"/><line x1="5" y1="10" x2="19" y2="10"/>',
+  kommandozentrale: '<line x1="12" y1="6" x2="12" y2="18"/><circle cx="12" cy="6" r="1.5" fill="currentColor" stroke="none"/><line x1="12" y1="18" x2="8" y2="19"/><line x1="12" y1="18" x2="16" y2="19"/>',
+  reparaturdock: '<circle cx="7" cy="8" r="2.2"/><line x1="9" y1="10" x2="16" y2="17"/><circle cx="17" cy="18" r="2.2"/>',
+  versorgungsdepot: '<rect x="6" y="9" width="12" height="9"/><line x1="6" y1="9" x2="18" y2="9"/><line x1="12" y1="9" x2="12" y2="18"/>',
+  sabotagezentrum: '<circle cx="12" cy="13" r="7" fill="none"/><polyline points="9,13 11,10 13,16 15,13" fill="none"/>',
+  propagandaturm: '<polygon points="6,11 13,8 13,18 6,15"/><rect x="13" y="11" width="3" height="4"/>',
+  geheimerstuetzpunkt: '<path d="M5 13 Q12 8 19 13 Q12 18 5 13 Z" fill="none"/><circle cx="12" cy="13" r="2" fill="currentColor" stroke="none"/>',
+  orbitalrelais: '<rect x="10" y="11" width="4" height="4"/><line x1="6" y1="9" x2="10" y2="12"/><line x1="18" y1="9" x2="14" y2="12"/><ellipse cx="12" cy="13" rx="9" ry="3" fill="none"/>',
+
+  dekontaminationsanlage: '<polygon points="12,5 16,13 12,19 8,13" fill="none"/><line x1="10" y1="11" x2="14" y2="15"/><line x1="14" y1="11" x2="10" y2="15"/>',
+  orbitalstartrampe: '<polygon points="12,5 15,11 9,11"/><rect x="9" y="11" width="6" height="6"/><polygon points="9,17 6,20 9,20"/><polygon points="15,17 18,20 15,20"/>',
+};
+
+function gebaeudeIconSvg(typ, groesse) {
+  const info = GEBAEUDE_TYPEN[typ];
+  const pfade = GEBAEUDE_ICON_PFADE[typ];
+  if (!info || !pfade) return "";
+  return `<svg class="gebaeude-icon icon-${info.kategorie}" width="${groesse}" height="${groesse}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true">${pfade}</svg>`;
+}
+
 // Kontamination: Gebiete in "Der Bruch" verlieren pro Runde 1 Nahrung, außer eine
 // fertige Dekontaminationsanlage (S01) steht dort. Regel + Wert sind ein bestätigter
 // Vorschlag (16.09.2026), da das Regelwerk dazu bisher nichts festlegte.
@@ -474,7 +518,7 @@ function updatePanel() {
     bauAuswahl.innerHTML = Object.entries(GEBAEUDE_TYPEN).map(([typ, info2]) => {
       const geht = kannBauen(aktiverSpieler, bauZiel, typ);
       const kontinentHinweis = info2.nurKontinent ? ` (nur ${info2.nurKontinent})` : "";
-      return `<button class="btn-gebaeude-typ" data-typ="${typ}" title="${info2.effektText}" ${geht ? "" : "disabled"}>${info2.code} ${info2.name} — ${kostenText(info2.kosten)}${kontinentHinweis}${info2.effektAktiv ? "" : " (Effekt folgt)"}</button>`;
+      return `<button class="btn-gebaeude-typ" data-typ="${typ}" title="${info2.effektText}" ${geht ? "" : "disabled"}>${gebaeudeIconSvg(typ, 18)}<span>${info2.code} ${info2.name} — ${kostenText(info2.kosten)}${kontinentHinweis}${info2.effektAktiv ? "" : " (Effekt folgt)"}</span></button>`;
     }).join("");
     bauAuswahl.querySelectorAll(".btn-gebaeude-typ").forEach((btn) => {
       btn.addEventListener("click", () => gebaeudeBauen(btn.dataset.typ));
@@ -527,7 +571,7 @@ function updatePanel() {
       const info2 = GEBAEUDE_TYPEN[b.typ];
       const kosten = reparaturKosten(b.typ);
       const geht = phase === "spielzug" && amZug() && kannBezahlen(aktiverSpieler, kosten);
-      return `<button class="btn-reparieren" data-gebiet="${t.id}" data-index="${i}" ${geht ? "" : "disabled"}>${t.id}: ${info2.code} ${info2.name} — ${kostenText(kosten)}</button>`;
+      return `<button class="btn-reparieren" data-gebiet="${t.id}" data-index="${i}" ${geht ? "" : "disabled"}>${gebaeudeIconSvg(b.typ, 18)}<span>${t.id}: ${info2.code} ${info2.name} — ${kostenText(kosten)}</span></button>`;
     }).join("");
     reparaturListe.querySelectorAll(".btn-reparieren").forEach((btn) => {
       btn.addEventListener("click", () => reparieren(btn.dataset.gebiet, Number(btn.dataset.index)));

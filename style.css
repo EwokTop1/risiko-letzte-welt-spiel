@@ -116,6 +116,22 @@ button:disabled{background:transparent;color:var(--text-muted);cursor:not-allowe
 #ressourcen-info,#cyber-info{font-size:12px;line-height:1.6}
 #bau-auswahl,#belagerung-effekt-auswahl,#reparatur-liste{display:flex;flex-direction:column;gap:5px;margin-top:6px;max-height:260px;overflow-y:auto}
 #bau-auswahl button,#belagerung-effekt-auswahl button,#reparatur-liste button{font-size:11px;padding:6px 8px;text-align:left;width:100%}
+#bau-auswahl button,#reparatur-liste button{
+  display:flex;align-items:center;gap:8px;
+  /* Eigener Hintergrund statt des hellen --accent-Standards: die Kategorie-Icons (gold/
+     rot/blau/violett) hätten darauf zu wenig Kontrast, vor allem gold auf türkis. */
+  background:var(--surface);
+  color:var(--text);
+}
+#bau-auswahl button:not(:disabled):hover,#reparatur-liste button:not(:disabled):hover{border-color:var(--accent)}
+#bau-auswahl button span,#reparatur-liste button span{flex:1}
+
+.gebaeude-icon{flex-shrink:0}
+.icon-wirtschaft{color:#d9a441}
+.icon-verteidigung{color:#d1495b}
+.icon-infrastruktur{color:#4c9bd1}
+.icon-sonder{color:#9a6fd1}
+button:disabled .gebaeude-icon{opacity:.4}
 
 #log{
   font-family:'Courier New',monospace;
