@@ -333,6 +333,21 @@ terrainFilter.innerHTML = `
 `;
 defsEl.appendChild(terrainFilter);
 
+// Gebäude-Icons als <symbol> für die Karte -- dieselben Pfade wie im Bau-Menü
+// (GEBAEUDE_ICON_PFADE), einmal registriert und per <use> auf jedem Gebiet referenziert.
+Object.entries(GEBAEUDE_ICON_PFADE).forEach(([typ, pfade]) => {
+  const symbol = ns("symbol");
+  symbol.setAttribute("id", "icon-symbol-" + typ);
+  symbol.setAttribute("viewBox", "0 0 24 24");
+  symbol.setAttribute("fill", "none");
+  symbol.setAttribute("stroke", "currentColor");
+  symbol.setAttribute("stroke-width", "1.6");
+  symbol.setAttribute("stroke-linejoin", "round");
+  symbol.setAttribute("stroke-linecap", "round");
+  symbol.innerHTML = pfade;
+  defsEl.appendChild(symbol);
+});
+
 function polyPath(pts) {
   return "M" + pts.map((p) => p[0] + "," + p[1]).join("L") + "Z";
 }
@@ -381,6 +396,19 @@ function ns(tag) { return document.createElementNS("http://www.w3.org/2000/svg",
 
 const pathById = {};
 const labelById = {};
+const iconGruppeById = {};
+const centroidById = {};
+
+// Eigene, zuletzt gezeichnete Ebene für alle Gebäude-Icons (statt sie in die jeweilige
+// kontinent-geclippte Gebiets-Gruppe zu hängen). Grund: pro Kontinent teilen sich alle
+// Gebiete dieselbe <g>, in Zeichenreihenfolge -- ein später gezeichnetes Nachbargebiet
+// hätte sonst frühere Icons einfach übermalt (per Konsolentest gefunden, 16.09.2026: selbst
+// ein grell rotes Test-Icon war dadurch komplett unsichtbar, obwohl im DOM korrekt vorhanden
+// und positioniert). Diese Ebene wird erst NACH allen Kontinenten ans SVG gehängt, damit sie
+// garantiert über allem liegt.
+const iconEbene = ns("g");
+iconEbene.setAttribute("class", "icon-ebene");
+iconEbene.setAttribute("pointer-events", "none");
 
 KARTENDATEN.kontinente.forEach((k) => {
   const clipId = "clip-" + k.id;
@@ -407,12 +435,18 @@ KARTENDATEN.kontinente.forEach((k) => {
     pathById[geb.id] = p;
 
     const c = centroid(geb.polygon);
+    centroidById[geb.id] = c;
     const t = ns("text");
     t.setAttribute("x", c[0]);
     t.setAttribute("y", c[1] + 3);
     t.setAttribute("class", "truppen");
     g.appendChild(t);
     labelById[geb.id] = t;
+
+    const iconGruppe = ns("g");
+    iconGruppe.setAttribute("class", "gebaeude-icons");
+    iconEbene.appendChild(iconGruppe);
+    iconGruppeById[geb.id] = iconGruppe;
   });
 
   const border = ns("path");
@@ -420,6 +454,8 @@ KARTENDATEN.kontinente.forEach((k) => {
   border.setAttribute("class", "cont-border");
   svg.appendChild(border);
 });
+
+svg.appendChild(iconEbene);
 
 // --- Rendering: laufende Aktualisierung ---
 // Während eines Bot-Zugs unterdrückt, damit nicht bei jeder Einzelaktion (Truppe platzieren,
@@ -437,11 +473,37 @@ function render() {
     p.setAttribute("stroke", besitzFarbe);
     p.classList.toggle("ausgewaehlt", t.id === ausgewaehlt);
     p.classList.toggle("ziel", t.id === ziel);
-    let text = String(t.truppen);
+    labelById[t.id].textContent = String(t.truppen);
+
+    // Gebäude-Icons statt Textcodes unter der Truppenzahl -- max. 4 gleichzeitig sichtbar
+    // (mehr würde auf den kleinen Gebieten nicht mehr unterscheidbar sein), der Rest bleibt
+    // im Titel/Tooltip. Im Bau befindliche Gebäude (noch nicht "fertig") halbtransparent.
+    const iconGruppe = iconGruppeById[t.id];
+    while (iconGruppe.firstChild) iconGruppe.removeChild(iconGruppe.firstChild);
     if (t.gebaeude.length) {
-      text += " " + t.gebaeude.map((b) => GEBAEUDE_TYPEN[b.typ].code + (b.fertig ? "" : "?")).join(",");
+      const c = centroidById[t.id];
+      // Die Karte wird ca. auf halbe viewBox-Größe herunterskaliert angezeigt -- Icon-Größe
+      // hier entsprechend größer wählen, sonst sind sie am Bildschirm nur wenige Pixel groß
+      // und praktisch unsichtbar (per Zoom-Screenshot getestet, 16.09.2026).
+      const GROESSE = 18;
+      const ABSTAND = 15;
+      const sichtbar = t.gebaeude.slice(0, 3);
+      const startX = c[0] - ((sichtbar.length - 1) * ABSTAND) / 2 - GROESSE / 2;
+      sichtbar.forEach((b, i) => {
+        const use = ns("use");
+        use.setAttribute("href", "#icon-symbol-" + b.typ);
+        use.setAttributeNS("http://www.w3.org/1999/xlink", "href", "#icon-symbol-" + b.typ);
+        use.setAttribute("width", GROESSE);
+        use.setAttribute("height", GROESSE);
+        use.setAttribute("x", startX + i * ABSTAND);
+        use.setAttribute("y", c[1] + 6);
+        use.setAttribute("class", "karten-icon icon-" + GEBAEUDE_TYPEN[b.typ].kategorie + (b.fertig ? "" : " im-bau"));
+        const titel = ns("title");
+        titel.textContent = GEBAEUDE_TYPEN[b.typ].name + (b.fertig ? "" : " (im Bau)");
+        use.appendChild(titel);
+        iconGruppe.appendChild(use);
+      });
     }
-    labelById[t.id].textContent = text;
   });
 }
 
