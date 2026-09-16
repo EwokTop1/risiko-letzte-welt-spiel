@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Risiko – Letzte Welt (Grundgerüst)</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<meta name="theme-color" content="#0a0e13">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1>Risiko – Letzte Welt <span class="tag">Grundgerüst · Testmodus</span></h1>
+    <p class="hinweis">Platzhalter-Karte, Platzhalter-Verteilung (abwechselnd Spieler 1/2). Nur Standard-Risiko-Kampf, noch kein Rundensystem, keine Ressourcen, keine Sondermechaniken.</p>
+  </header>
+
+  <main>
+    <div class="board-wrap">
+      <svg id="board" viewBox="0 0 1200 620" xmlns="http://www.w3.org/2000/svg"></svg>
+    </div>
+
+    <aside id="panel">
+      <div class="block">
+        <h2>Mehrspieler (P2P)</h2>
+        <div id="mp-status">Nicht verbunden — lokaler Testmodus.</div>
+        <button id="btn-mp-erstellen">Spiel erstellen</button>
+        <div id="mp-code-anzeige" hidden></div>
+        <input id="mp-code-eingabe" placeholder="Code eingeben" maxlength="5" style="width:100%;margin-top:6px;padding:8px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text);">
+        <button id="btn-mp-beitreten">Spiel beitreten</button>
+      </div>
+
+      <div class="block">
+        <h2>Aktiver Spieler</h2>
+        <div id="spieler-auswahl"></div>
+      </div>
+
+      <div class="block">
+        <h2>Auswahl</h2>
+        <div id="auswahl-info">Kein Gebiet ausgewählt.</div>
+        <button id="btn-angriff" disabled>Angriff würfeln</button>
+        <button id="btn-abbrechen" disabled>Auswahl aufheben</button>
+      </div>
+
+      <div class="block">
+        <h2>Würfel-Log</h2>
+        <div id="log"></div>
+      </div>
+    </aside>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.2/dist/peerjs.min.js"></script>
+  <script src="netzwerk.js"></script>
+  <script src="karten-daten.js"></script>
+  <script src="spiel.js"></script>
+  <script>
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("service-worker.js").catch(() => {});
+    }
+
+    const mpStatus = document.getElementById("mp-status");
+    const mpCodeAnzeige = document.getElementById("mp-code-anzeige");
+    const mpCodeEingabe = document.getElementById("mp-code-eingabe");
+
+    function onStatus(zustand, info) {
+      if (zustand === "warte") {
+        mpCodeAnzeige.hidden = false;
+        mpCodeAnzeige.innerHTML = `Code: <b>${info}</b><br>An Mitspieler weitergeben, wartet auf Beitritt …`;
+        mpStatus.textContent = "Spiel erstellt, warte auf Verbindung …";
+      } else if (zustand === "verbunden") {
+        mpStatus.textContent = `Verbunden — du bist Spieler ${NETZWERK.meineRolle()}.`;
+        aktiverSpieler = NETZWERK.meineRolle();
+        document.getElementById("spieler-auswahl").style.display = "none";
+        if (typeof render === "function") { render(); updatePanel(); }
+      } else if (zustand === "getrennt") {
+        mpStatus.textContent = "Verbindung getrennt.";
+      } else if (zustand === "fehler") {
+        mpStatus.textContent = "Fehler: " + info;
+      }
+    }
+
+    document.getElementById("btn-mp-erstellen").addEventListener("click", () => {
+      NETZWERK.spielErstellen(onStatus);
+    });
+    document.getElementById("btn-mp-beitreten").addEventListener("click", () => {
+      if (mpCodeEingabe.value.trim()) NETZWERK.spielBeitreten(mpCodeEingabe.value, onStatus);
+    });
+  </script>
+</body>
+</html>
