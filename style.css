@@ -79,7 +79,8 @@ main{display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap}
 }
 .block h2{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted);margin:0 0 10px}
 
-#spieler-auswahl{display:flex;gap:8px}
+#spieler-auswahl{display:flex;flex-direction:column;gap:8px}
+.spieler-zeile{display:flex;align-items:center;gap:8px}
 .spieler-btn{
   flex:1;
   padding:8px;

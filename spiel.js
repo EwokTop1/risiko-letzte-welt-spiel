@@ -28,9 +28,11 @@ const KONTINENT_FARBE = {
 const BESITZ_DECKKRAFT = 0.5;
 
 const SPIELER = [
-  { id: 1, name: "Spieler 1", farbe: "#d1495b", ressourcen: { metall: 5, nahrung: 5, treibstoff: 5, energie: 10 }, cybermarker: 0 },
-  { id: 2, name: "Spieler 2", farbe: "#3a86ff", ressourcen: { metall: 5, nahrung: 5, treibstoff: 5, energie: 10 }, cybermarker: 0 },
+  { id: 1, name: "Spieler 1", farbe: "#d1495b", ressourcen: { metall: 5, nahrung: 5, treibstoff: 5, energie: 10 }, cybermarker: 0, istBot: false },
+  { id: 2, name: "Spieler 2", farbe: "#3a86ff", ressourcen: { metall: 5, nahrung: 5, treibstoff: 5, energie: 10 }, cybermarker: 0, istBot: false },
 ];
+// Verzögerung, bevor der Bot nach Rundenbeginn zu handeln anfängt (nur Optik, kein Balancing).
+const BOT_VERZOEGERUNG_MS = 500;
 const ENERGIE_MAX = 50;
 const CYBERMARKER_MAX = 5;
 const CYBERMARKER_KOSTEN = 25;
@@ -245,6 +247,14 @@ function rundenStart(spielerId) {
   log(`${SPIELER.find((s) => s.id === spielerId).name} — Verstärkungsphase: ${verstaerkungUebrig} neue Truppen verteilen.`);
   render();
   updatePanel();
+
+  // Bot-Züge laufen nur lokal (Hotseat/Einzelspieler) automatisch. Im Online-Mehrspieler
+  // steuert jede Seite nur ihre eigene Verbindung -- Bots dort sind nicht vorgesehen.
+  const spieler = SPIELER.find((s) => s.id === spielerId);
+  const istOnline = typeof NETZWERK !== "undefined" && NETZWERK.istOnline();
+  if (spieler?.istBot && !istOnline) {
+    setTimeout(() => botZug(spielerId), BOT_VERZOEGERUNG_MS);
+  }
 }
 
 // --- Rendering: Karte einmalig aufbauen ---
@@ -355,7 +365,14 @@ KARTENDATEN.kontinente.forEach((k) => {
 });
 
 // --- Rendering: laufende Aktualisierung ---
+// Während eines Bot-Zugs unterdrückt, damit nicht bei jeder Einzelaktion (Truppe platzieren,
+// bauen, angreifen, ...) die komplette Karte neu gezeichnet wird -- das würde den Bot-Zug
+// spürbar verlangsamen, ohne dass währenddessen jemand zusieht. botZug() rendert selbst
+// einmal am Anfang und einmal am Ende.
+let botRenderStumm = false;
+
 function render() {
+  if (botRenderStumm) return;
   Object.values(territorien).forEach((t) => {
     const besitzFarbe = t.owner ? SPIELER.find((s) => s.id === t.owner).farbe : NEUTRAL_FARBE;
     const p = pathById[t.id];
@@ -377,6 +394,7 @@ function ressourcenText(spielerId) {
 }
 
 function updatePanel() {
+  if (botRenderStumm) return;
   const phaseInfo = document.getElementById("phase-info");
   const info = document.getElementById("auswahl-info");
   const btnAngriff = document.getElementById("btn-angriff");
@@ -951,12 +969,205 @@ if (typeof NETZWERK !== "undefined") {
   });
 }
 
+// --- Bot (Gegner-KI) ---
+// Einfache regelbasierte, vorsichtige KI: baut zuerst Wirtschaft/Grenzverteidigung aus und
+// greift nur bei klarer Übermacht an. Nutzt dieselben Funktionen wie ein menschlicher Klick
+// (angriff(), gebaeudeBauen(), cybermarkerKaufen(), belagerungAusfuehren(), ...), damit
+// Kampf-/Kostenlogik garantiert identisch bleibt.
+const BOT_ANGRIFFS_SCHWELLE = 2; // eigene Truppen müssen mind. doppelt so hoch sein wie die des Ziels
+const BOT_ENERGIE_PUFFER = 20; // Reserve, die Sondermechaniken nicht antasten sollen
+const BOT_WIRTSCHAFT_TYPEN = ["mine", "farm", "kraftwerk", "raffinerie"];
+const BOT_GRENZ_VERTEIDIGUNG_TYPEN = ["flagstellung", "geschuetz", "schildgenerator"]; // Mauer bewusst ausgenommen (braucht Zielwahl)
+
+function botEigeneGebiete(spielerId) {
+  return Object.values(territorien).filter((t) => t.owner === spielerId);
+}
+
+function botIstGrenzgebiet(t) {
+  const nachbarn = adjazenz.get(t.id);
+  if (!nachbarn) return false;
+  for (const n of nachbarn) {
+    if (territorien[n].owner !== t.owner) return true;
+  }
+  return false;
+}
+
+function botVerstaerkungVerteilen(spielerId) {
+  let sicherheit = 0;
+  while (verstaerkungUebrig > 0 && phase === "verstaerkung" && sicherheit < 200) {
+    sicherheit++;
+    const eigene = botEigeneGebiete(spielerId);
+    if (eigene.length === 0) break;
+    const grenzgebiete = eigene.filter(botIstGrenzgebiet);
+    const kandidaten = grenzgebiete.length ? grenzgebiete : eigene;
+    const ziel = kandidaten.slice().sort((a, b) => a.truppen - b.truppen)[0];
+    onClickGebiet(ziel.id);
+  }
+}
+
+// Priorität 1: pro fehlendem Wirtschaftsgebäudetyp eines bauen (irgendwo, wo es geht).
+// Priorität 2: Grenzgebiete ohne Verteidigungsgebäude eines der drei einfachen Typen geben.
+function botBauen(spielerId) {
+  let sicherheit = 0;
+  let weiterBauen = true;
+  while (weiterBauen && sicherheit < 10) {
+    sicherheit++;
+    weiterBauen = false;
+    const eigene = botEigeneGebiete(spielerId);
+
+    const fehlenderTyp = BOT_WIRTSCHAFT_TYPEN.find((typ) => zaehleAlleGebaeude(spielerId, typ) === 0);
+    if (fehlenderTyp) {
+      const ziel = eigene.find((t) => kannBauen(spielerId, t.id, fehlenderTyp));
+      if (ziel) {
+        bauZiel = ziel.id;
+        gebaeudeBauen(fehlenderTyp);
+        weiterBauen = true;
+        continue;
+      }
+    }
+
+    const grenzOhneVerteidigung = eigene.filter(
+      (t) => botIstGrenzgebiet(t) && !t.gebaeude.some((b) => BOT_GRENZ_VERTEIDIGUNG_TYPEN.includes(b.typ))
+    );
+    for (const t of grenzOhneVerteidigung) {
+      const typ = BOT_GRENZ_VERTEIDIGUNG_TYPEN.find((typ2) => kannBauen(spielerId, t.id, typ2));
+      if (typ) {
+        bauZiel = t.id;
+        gebaeudeBauen(typ);
+        weiterBauen = true;
+        break;
+      }
+    }
+  }
+  bauModus = false;
+  bauZiel = null;
+}
+
+function botCybermarkerKaufen(spielerId) {
+  const s = SPIELER.find((sp) => sp.id === spielerId);
+  let sicherheit = 0;
+  while (s.cybermarker < CYBERMARKER_MAX && s.ressourcen.energie - CYBERMARKER_KOSTEN >= BOT_ENERGIE_PUFFER && sicherheit < 5) {
+    cybermarkerKaufen();
+    sicherheit++;
+  }
+}
+
+// Vorsichtig: greift nur an, wenn eigene Truppen (abzüglich der einen, die stehen bleiben
+// muss) mindestens BOT_ANGRIFFS_SCHWELLE-mal so hoch sind wie die des Verteidigers, und
+// wählt je Durchgang den Angriff mit dem größten Vorteil. Setzt bei knappem Vorteil den
+// eigenen Cybermarker ein, um den Sieg abzusichern.
+function botAngreifen(spielerId) {
+  let sicherheit = 0;
+  while (sicherheit < 30) {
+    sicherheit++;
+    const eigene = botEigeneGebiete(spielerId);
+    let bester = null;
+    for (const t of eigene) {
+      if (t.truppen <= 3) continue;
+      const nachbarn = adjazenz.get(t.id);
+      if (!nachbarn) continue;
+      for (const nId of nachbarn) {
+        const n = territorien[nId];
+        if (n.owner === spielerId) continue;
+        const mauerBlockt = n.gebaeude.some((b) => b.fertig && !b.beschaedigt && b.typ === "mauer" && b.ziel === t.id);
+        if (mauerBlockt) continue;
+        if (t.truppen - 1 >= n.truppen * BOT_ANGRIFFS_SCHWELLE) {
+          const vorteil = t.truppen - n.truppen;
+          if (!bester || vorteil > bester.vorteil) bester = { von: t.id, nach: nId, vorteil, dTruppen: n.truppen };
+        }
+      }
+    }
+    if (!bester) break;
+    const s = SPIELER.find((sp) => sp.id === spielerId);
+    ausgewaehlt = bester.von;
+    ziel = bester.nach;
+    cyberEinsetzenAngriff = s.cybermarker > 0 && bester.vorteil < bester.dTruppen;
+    angriff();
+  }
+  ausgewaehlt = null;
+  ziel = null;
+  cyberEinsetzenAngriff = false;
+}
+
+// Belagerung/Bombardierung gegen ein Grenzgebiet, das dem Bot aktuell zu stark zum direkten
+// Angreifen ist (Regelwerk-konform max. 1x/Zug je Mechanik) -- schwächt den Gegner, statt
+// ihn unangetastet zu lassen. Bevorzugt bei Belagerung den Effekt "Verteidigung schwächen"
+// (vorsichtig: bereitet den nächsten eigenen Zug vor, statt riskant zu eskalieren).
+function botFindeUeberlegenesGrenzziel(spielerId, minTruppen) {
+  const eigene = botEigeneGebiete(spielerId);
+  for (const t of eigene) {
+    if (t.truppen < minTruppen) continue;
+    const nachbarn = adjazenz.get(t.id);
+    if (!nachbarn) continue;
+    for (const nId of nachbarn) {
+      const n = territorien[nId];
+      if (n.owner === spielerId) continue;
+      if (n.truppen > t.truppen) return { von: t.id, nach: nId };
+    }
+  }
+  return null;
+}
+
+function botSondermechaniken(spielerId) {
+  const s = SPIELER.find((sp) => sp.id === spielerId);
+
+  if (!bombardierungVerwendet && s.ressourcen.energie - BOMBARDIERUNG_KOSTEN >= BOT_ENERGIE_PUFFER) {
+    const ziel = botFindeUeberlegenesGrenzziel(spielerId, 1);
+    if (ziel) {
+      bombardierungVon = ziel.von;
+      bombardierungZiel = ziel.nach;
+      bombardierungAusfuehren();
+    }
+  }
+
+  if (!belagerungVerwendet) {
+    const ziel = botFindeUeberlegenesGrenzziel(spielerId, 2);
+    if (ziel) {
+      belagerungVon = ziel.von;
+      belagerungZiel = ziel.nach;
+      belagerungAusfuehren();
+      if (belagerungEffektAuswahl) belagerungEffektAnwenden("schwaechen");
+    }
+  }
+}
+
+// Konsolidiert Truppen aus dem Landesinneren an die Grenze, wenn eine Verschiebung übrig ist.
+function botVerschieben(spielerId) {
+  if (verschiebenVerbleibend <= 0) return;
+  const eigene = botEigeneGebiete(spielerId);
+  const innenGebiete = eigene.filter((t) => !botIstGrenzgebiet(t) && t.truppen > 3);
+  for (const t of innenGebiete) {
+    const nachbarn = [...(adjazenz.get(t.id) || [])].filter((nId) => territorien[nId].owner === spielerId);
+    const grenzZiel = nachbarn.find((nId) => botIstGrenzgebiet(territorien[nId]));
+    if (grenzZiel) {
+      verschiebenTruppen(t.id, grenzZiel);
+      break;
+    }
+  }
+}
+
+function botZug(spielerId) {
+  if (aktiverSpieler !== spielerId || !SPIELER.find((s) => s.id === spielerId)?.istBot) return;
+  botRenderStumm = true;
+  botVerstaerkungVerteilen(spielerId);
+  phase = "spielzug";
+  botBauen(spielerId);
+  botCybermarkerKaufen(spielerId);
+  botAngreifen(spielerId);
+  botSondermechaniken(spielerId);
+  botVerschieben(spielerId);
+  botRenderStumm = false;
+  render();
+  updatePanel();
+  zugBeenden();
+}
+
 document.getElementById("btn-angriff").addEventListener("click", angriff);
 document.getElementById("btn-abbrechen").addEventListener("click", () => {
   ausgewaehlt = null; ziel = null; verschiebenQuelle = null; bauZiel = null; mauerZielAuswahl = null; render(); updatePanel();
 });
 document.getElementById("btn-verschieben").addEventListener("click", () => {
-  if (phase !== "spielzug" || verschobenDiesenZug || !amZug()) return;
+  if (phase !== "spielzug" || verschiebenVerbleibend <= 0 || !amZug()) return;
   verschiebenModus = !verschiebenModus;
   bauModus = false; bauZiel = null;
   verschiebenQuelle = null;
@@ -1002,6 +1213,9 @@ document.getElementById("btn-belagerung-ausfuehren").addEventListener("click", b
 
 const spielerAuswahl = document.getElementById("spieler-auswahl");
 SPIELER.forEach((s) => {
+  const zeile = document.createElement("div");
+  zeile.className = "spieler-zeile";
+
   const btn = document.createElement("button");
   btn.className = "spieler-btn" + (s.id === aktiverSpieler ? " aktiv" : "");
   btn.dataset.spielerId = s.id;
@@ -1010,7 +1224,23 @@ SPIELER.forEach((s) => {
   // Manueller Spielerwechsel dient nur dem lokalen Hotseat-Testen (überspringt die
   // laufende Phase des vorherigen Spielers wie ein erzwungenes Rundenende).
   btn.addEventListener("click", () => rundenStart(s.id));
-  spielerAuswahl.appendChild(btn);
+
+  const botLabel = document.createElement("label");
+  botLabel.style.cssText = "display:flex;align-items:center;gap:4px;font-size:12px;margin-left:8px";
+  const botCheckbox = document.createElement("input");
+  botCheckbox.type = "checkbox";
+  botCheckbox.checked = s.istBot;
+  botCheckbox.addEventListener("change", (e) => {
+    s.istBot = e.target.checked;
+    // Falls gerade dieser Spieler am Zug ist und jetzt zum Bot wird, direkt übernehmen.
+    if (s.istBot && aktiverSpieler === s.id) setTimeout(() => botZug(s.id), BOT_VERZOEGERUNG_MS);
+  });
+  botLabel.appendChild(botCheckbox);
+  botLabel.appendChild(document.createTextNode("KI"));
+
+  zeile.appendChild(btn);
+  zeile.appendChild(botLabel);
+  spielerAuswahl.appendChild(zeile);
 });
 
 rundenStart(aktiverSpieler);
