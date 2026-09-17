@@ -1685,4 +1685,29 @@ SPIELER.forEach((s) => {
   spielerAuswahl.appendChild(zeile);
 });
 
-rundenStart(aktiverSpieler);
+// Start-Overlay: Mensch/Bot je Spieler vor dem ersten Zug festlegen (Muster übernommen aus
+// dem Setup-Menü von "Strategiespiel Drannoth" -- dort zusätzlich mit Schwierigkeitsgrad je
+// Bot, den es hier nicht gibt, botZug() kennt keine Stufen). rundenStart() lief bisher sofort
+// beim Laden; jetzt hängt der erste Aufruf am Klick auf "Spiel starten".
+const startOverlaySlots = document.getElementById("start-overlay-slots");
+SPIELER.forEach((s) => {
+  const zeile = document.createElement("div");
+  zeile.className = "start-slot-zeile";
+  zeile.innerHTML = `
+    <span class="chip" style="width:12px;height:12px;border-radius:50%;background:${s.farbe}"></span>
+    <span class="start-slot-name">${s.name}</span>
+    <label><input type="radio" name="start-art-${s.id}" value="mensch" checked> Mensch</label>
+    <label><input type="radio" name="start-art-${s.id}" value="bot"> Bot</label>
+  `;
+  startOverlaySlots.appendChild(zeile);
+});
+
+document.getElementById("btn-spiel-starten").addEventListener("click", () => {
+  SPIELER.forEach((s) => {
+    const gewaehlt = document.querySelector(`input[name="start-art-${s.id}"]:checked`);
+    s.istBot = !!gewaehlt && gewaehlt.value === "bot";
+    if (botCheckboxes[s.id]) botCheckboxes[s.id].checked = s.istBot;
+  });
+  document.getElementById("start-overlay").remove();
+  rundenStart(aktiverSpieler);
+});

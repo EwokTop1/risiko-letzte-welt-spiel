@@ -213,6 +213,28 @@ details.block summary::after{
 }
 details.block[open] summary::after{transform:rotate(-90deg)}
 
+/* Start-Overlay: blockiert das Brett, bis Mensch/Bot je Spieler feststeht (siehe spiel.js,
+   Aufruf von rundenStart() hängt jetzt am "Spiel starten"-Klick statt automatisch beim Laden). */
+#start-overlay{
+  position:fixed;inset:0;z-index:50;
+  display:flex;align-items:center;justify-content:center;
+  background:rgba(0,0,0,.6);
+  padding:20px;
+}
+#start-overlay-box{
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:12px;
+  padding:20px;
+  width:min(420px, 100%);
+  box-shadow:0 6px 16px rgba(0,0,0,.35);
+}
+#start-overlay-box h2{margin:0 0 6px}
+#start-overlay-slots{display:flex;flex-direction:column;gap:10px;margin:14px 0}
+.start-slot-zeile{display:flex;align-items:center;gap:10px;font-size:13px}
+.start-slot-name{flex:1}
+.start-slot-zeile label{display:flex;align-items:center;gap:4px;cursor:pointer}
+
 #spieler-auswahl{display:flex;flex-direction:column;gap:8px}
 .spieler-zeile{display:flex;align-items:center;gap:8px}
 .spieler-btn{
