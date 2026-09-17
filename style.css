@@ -58,8 +58,10 @@ main{display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap}
   padding:10px;
 }
 #board{width:100%;height:auto;display:block}
+#board-3d{width:100%;height:620px;border-radius:8px;overflow:hidden}
+#board-3d canvas{display:block;width:100%;height:100%}
 
-.gebiet{stroke-width:1.6;cursor:pointer;transition:filter .1s;paint-order:stroke fill}
+.gebiet{stroke-width:3;cursor:pointer;transition:filter .1s;paint-order:stroke fill}
 .gebiet:hover{filter:brightness(1.2) saturate(1.15)}
 .gebiet.ausgewaehlt{stroke:#fff !important;stroke-width:3}
 .gebiet.ziel{stroke:#fff !important;stroke-width:3;stroke-dasharray:3 2}

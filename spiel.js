@@ -24,9 +24,6 @@ const KONTINENT_FARBE = {
   afrika: "#c2a05a", bruch: "#a15c3e", sa: "#4c9b6a", australien: "#c17a4a",
   konstrukt: "#8a92a0", aqua0: "#3f9c9a", aqua1: "#3f9c9a", aqua2: "#3f9c9a", aqua3: "#3f9c9a",
 };
-// Wieviel Prozent der Fläche in Spielerfarbe eingefärbt wird (Rest bleibt Geländefarbe sichtbar)
-const BESITZ_DECKKRAFT = 0.5;
-
 const SPIELER = [
   { id: 1, name: "Spieler 1", farbe: "#d1495b", ressourcen: { metall: 5, nahrung: 5, treibstoff: 5, energie: 10 }, cybermarker: 0, istBot: false },
   { id: 2, name: "Spieler 2", farbe: "#3a86ff", ressourcen: { metall: 5, nahrung: 5, treibstoff: 5, energie: 10 }, cybermarker: 0, istBot: false },
@@ -203,10 +200,6 @@ function hexZuRgb(hex) {
 }
 function rgbZuHex([r, g, b]) {
   return "#" + [r, g, b].map((v) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, "0")).join("");
-}
-function farbMischen(hexA, hexB, anteilB) {
-  const a = hexZuRgb(hexA), b = hexZuRgb(hexB);
-  return rgbZuHex(a.map((v, i) => v * (1 - anteilB) + b[i] * anteilB));
 }
 function hashText(text) {
   let h = 0;
@@ -475,7 +468,7 @@ function render() {
   Object.values(territorien).forEach((t) => {
     const besitzFarbe = t.owner ? SPIELER.find((s) => s.id === t.owner).farbe : NEUTRAL_FARBE;
     const p = pathById[t.id];
-    p.setAttribute("fill", farbMischen(t.terrainFarbe, besitzFarbe, BESITZ_DECKKRAFT));
+    p.setAttribute("fill", t.terrainFarbe);
     p.setAttribute("stroke", besitzFarbe);
     p.classList.toggle("ausgewaehlt", t.id === ausgewaehlt);
     p.classList.toggle("ziel", t.id === ziel);
@@ -511,6 +504,7 @@ function render() {
       });
     }
   });
+  if (typeof aktualisiere3D === "function") aktualisiere3D();
 }
 
 function ressourcenText(spielerId) {
