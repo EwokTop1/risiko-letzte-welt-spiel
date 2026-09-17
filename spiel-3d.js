@@ -170,11 +170,55 @@ function macheDekoMesh(typ, rnd) {
   return mesh;
 }
 
+// Benannte, wiedererkennbare Gebirgszüge an geografisch passender Stelle innerhalb eines
+// Kontinents -- nicht per Gebiets-ID fest verdrahtet (die Gebiets-Grenzen sind Voronoi-
+// Zellen, kein reales Gelände), sondern per Position relativ zur Kontinent-Bounding-Box:
+// "achse"/"richtung"/"schwelle" beschreiben, welcher Rand des Kontinents das Gebirge trägt.
+// Ersetzt in den betroffenen Gebieten die normale Biom-Deko (Baum/Düne/...) komplett durch
+// Gebirgs-Deko, damit der Höhenzug optisch klar als eigenständiges Merkmal hervorsticht.
+const GEBIRGSZUEGE = {
+  sa: { achse: "x", richtung: "min", schwelle: 0.32 },      // Anden -- Westküste Südamerikas
+  na: { achse: "x", richtung: "min", schwelle: 0.3 },       // Rocky Mountains -- Westen Nordamerikas
+  asien: { achse: "y", richtung: "max", schwelle: 0.3 },    // Himalaya -- Süden/Zentralasien
+  europa: { achse: "y", richtung: "max", schwelle: 0.32 },  // Alpen -- Süden Europas
+};
+
+function istGebirgsGebiet(kontinentId, mitte, bbox) {
+  const zone = GEBIRGSZUEGE[kontinentId];
+  if (!zone) return false;
+  const [minA, maxA] = zone.achse === "x" ? [bbox.minX, bbox.maxX] : [bbox.minY, bbox.maxY];
+  const wert = zone.achse === "x" ? mitte[0] : mitte[1];
+  const anteil = (wert - minA) / ((maxA - minA) || 1);
+  return zone.richtung === "min" ? anteil < zone.schwelle : anteil > 1 - zone.schwelle;
+}
+
+// Einzelner Gipfel: grauer Felskegel + weiße Schneekuppe -- die Silhouette, an der man ein
+// Gebirge (Anden/Rockies/Himalaya/Alpen) auf den ersten Blick von normalen Hügeln/Bäumen
+// unterscheidet. Deutlich höher als die übrige Terrain-Deko.
+function macheGebirgsMesh(rnd) {
+  const gruppe = new THREE.Group();
+  const hoehe = 17 + rnd() * 16;
+  const fels = new THREE.Mesh(
+    new THREE.ConeGeometry(4 + rnd() * 2.5, hoehe, 6),
+    new THREE.MeshStandardMaterial({ color: 0x757478, roughness: 0.95 })
+  );
+  fels.position.y = hoehe / 2;
+  gruppe.add(fels);
+  const schneeHoehe = hoehe * 0.3;
+  const schnee = new THREE.Mesh(
+    new THREE.ConeGeometry(2 + rnd(), schneeHoehe, 6),
+    new THREE.MeshStandardMaterial({ color: 0xf3f8fb, roughness: 0.6 })
+  );
+  schnee.position.y = hoehe - schneeHoehe * 0.4;
+  gruppe.add(schnee);
+  return gruppe;
+}
+
 // Streut deterministisch ein paar Deko-Objekte über die Fläche eines Gebiets (Rejection
 // Sampling im Bounding-Box, verworfen wenn außerhalb des Polygons). Anzahl grob an die
 // Bounding-Box-Fläche gekoppelt, gedeckelt, damit sehr große Gebiete (z.B. in Asien) nicht
 // mit hunderten Objekten die Framerate belasten.
-function erzeugeTerrainDeko(gebiet, kontinentId, dekoGruppe) {
+function erzeugeTerrainDeko(gebiet, kontinentId, dekoGruppe, kontinentBBox) {
   const typ = TERRAIN_TYP_NACH_KONTINENT[kontinentId];
   if (!typ) return;
   const polygon = gebiet.polygon;
@@ -183,6 +227,9 @@ function erzeugeTerrainDeko(gebiet, kontinentId, dekoGruppe) {
   const flaecheNaeherung = (maxX - minX) * (maxY - minY);
   const rnd = erzeugeZufall3D(hashSeed3D(gebiet.id));
   const anzahl = Math.max(1, Math.min(6, Math.round(flaecheNaeherung / 900)));
+  const mitte = [(minX + maxX) / 2, (minY + maxY) / 2];
+  const bbox = kontinentBBox[kontinentId];
+  const gebirge = bbox && istGebirgsGebiet(kontinentId, mitte, bbox);
 
   for (let i = 0; i < anzahl; i++) {
     let punkt = null;
@@ -191,7 +238,7 @@ function erzeugeTerrainDeko(gebiet, kontinentId, dekoGruppe) {
       if (punktInPolygon3D(kandidat, polygon)) { punkt = kandidat; break; }
     }
     if (!punkt) continue;
-    const deko = macheDekoMesh(typ, rnd);
+    const deko = gebirge ? macheGebirgsMesh(rnd) : macheDekoMesh(typ, rnd);
     const skala = 0.7 + rnd() * 0.6;
     deko.scale.setScalar(skala);
     deko.rotation.y = rnd() * Math.PI * 2;
@@ -254,10 +301,22 @@ function initKarte3D() {
 
   const meshById = {};
 
+  // Bounding-Box pro Kontinent -- Grundlage dafür, wo genau (z.B. "Westrand") ein benannter
+  // Gebirgszug (siehe GEBIRGSZUEGE) innerhalb des Kontinents zu liegen kommt.
+  const kontinentBBox = {};
+  KARTENDATEN.kontinente.forEach((k) => {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    k.gebiete.forEach((g) => {
+      if (!g.polygon) return;
+      g.polygon.forEach(([x, y]) => { minX = Math.min(minX, x); maxX = Math.max(maxX, x); minY = Math.min(minY, y); maxY = Math.max(maxY, y); });
+    });
+    kontinentBBox[k.id] = { minX, minY, maxX, maxY };
+  });
+
   KARTENDATEN.kontinente.forEach((k) => {
     k.gebiete.forEach((g) => {
       if (!g.polygon || g.polygon.length < 3) return;
-      erzeugeTerrainDeko(g, k.id, dekoGruppe);
+      erzeugeTerrainDeko(g, k.id, dekoGruppe, kontinentBBox);
       // SVG-Koordinaten (x nach rechts, y nach unten) -> 3D-Ebene (x, z), y bleibt "oben"
       // für die Extrusionshöhe. z = SVG-y, damit die Karte in der 3D-Szene nicht gespiegelt wird.
       const form = new THREE.Shape(g.polygon.map(([x, y]) => new THREE.Vector2(x, -y)));
