@@ -551,7 +551,25 @@ function updatePanel() {
     }
   }
 
-  const spielerName = SPIELER.find((s) => s.id === aktiverSpieler).name;
+  const aktiverSpielerObj = SPIELER.find((s) => s.id === aktiverSpieler);
+  const spielerName = aktiverSpielerObj.name;
+
+  const rundenleiste = document.getElementById("rundenleiste");
+  if (rundenleiste) {
+    rundenleiste.style.backgroundColor = aktiverSpielerObj.farbe;
+    document.getElementById("rundenleiste-spieler").textContent =
+      `Am Zug: ${spielerName}${aktiverSpielerObj.istBot ? " (KI)" : ""}`;
+    const kurzPhase = {
+      verstaerkung: "Verstärkung", spielzug: "Spielzug", bauen: "Bauen",
+    }[phase] || phase;
+    document.getElementById("rundenleiste-phase").textContent =
+      mauerZielAuswahl ? "Mauer: Ziel wählen" :
+      bauModus ? "Bauen" :
+      verschiebenModus ? "Verschieben" :
+      belagerungModus ? "Belagerung" :
+      bombardierungModus ? "Bombardierung" : kurzPhase;
+  }
+
   if (phase === "verstaerkung") {
     phaseInfo.innerHTML = `<b>${spielerName}</b> — Verstärkungsphase<br>Noch <b>${verstaerkungUebrig}</b> Truppen zu verteilen: eigenes Gebiet anklicken.`;
   } else if (mauerZielAuswahl) {

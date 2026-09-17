@@ -18,6 +18,10 @@
 </script>
 </head>
 <body>
+  <div id="rundenleiste">
+    <span id="rundenleiste-spieler">Spieler 1</span>
+    <span id="rundenleiste-phase">Verstärkungsphase</span>
+  </div>
   <header>
     <button id="btn-theme" title="Hell/Dunkel umschalten" style="width:auto;float:right;padding:6px 10px;margin-top:0">🌙</button>
     <button id="btn-3d" title="3D-Ansicht umschalten" style="width:auto;float:right;padding:6px 10px;margin-top:0;margin-right:8px">🧊 3D</button>
@@ -32,38 +36,22 @@
     </div>
 
     <aside id="panel">
-      <details class="block" open>
-        <summary><h2>Kampagne · Krieg der Schatten</h2></summary>
-        <div id="kampagne-status">Keine aktive Kampagne.</div>
-        <button id="btn-kampagne-starten">Kampagne starten</button>
-      </details>
-
-      <details class="block">
-        <summary><h2>Mehrspieler (P2P)</h2></summary>
-        <div id="mp-status">Nicht verbunden — lokaler Testmodus.</div>
-        <button id="btn-mp-erstellen">Spiel erstellen</button>
-        <div id="mp-code-anzeige" hidden></div>
-        <input id="mp-code-eingabe" placeholder="Code eingeben" maxlength="5" style="width:100%;margin-top:6px;padding:8px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text);">
-        <button id="btn-mp-beitreten">Spiel beitreten</button>
-      </details>
-
-      <div class="block">
-        <h2>Aktiver Spieler</h2>
-        <div id="spieler-auswahl"></div>
-      </div>
-
-      <div class="block">
-        <h2>Ressourcen</h2>
-        <div id="ressourcen-info"></div>
-      </div>
-
-      <div class="block">
+      <!-- Reihenfolge nach Häufigkeit im Spielfluss: Runde/Auswahl/Sondermechaniken zuerst
+           (bei jedem Zug gebraucht), Status-/Setup-Panels danach, Log zuletzt. -->
+      <div class="block span-2">
         <h2>Runde</h2>
         <div id="phase-info"></div>
         <button id="btn-bauen" disabled>Bauen</button>
         <div id="bau-auswahl" hidden></div>
         <button id="btn-verschieben" disabled>Verschieben</button>
         <button id="btn-zug-beenden" disabled>Zug beenden</button>
+      </div>
+
+      <div class="block span-2">
+        <h2>Auswahl</h2>
+        <div id="auswahl-info">Kein Gebiet ausgewählt.</div>
+        <button id="btn-angriff" disabled>Angriff würfeln</button>
+        <button id="btn-abbrechen" disabled>Auswahl aufheben</button>
       </div>
 
       <div class="block">
@@ -88,13 +76,31 @@
       </div>
 
       <div class="block">
-        <h2>Auswahl</h2>
-        <div id="auswahl-info">Kein Gebiet ausgewählt.</div>
-        <button id="btn-angriff" disabled>Angriff würfeln</button>
-        <button id="btn-abbrechen" disabled>Auswahl aufheben</button>
+        <h2>Ressourcen</h2>
+        <div id="ressourcen-info"></div>
       </div>
 
       <div class="block">
+        <h2>Aktiver Spieler</h2>
+        <div id="spieler-auswahl"></div>
+      </div>
+
+      <details class="block">
+        <summary><h2>Kampagne · Krieg der Schatten</h2></summary>
+        <div id="kampagne-status">Keine aktive Kampagne.</div>
+        <button id="btn-kampagne-starten">Kampagne starten</button>
+      </details>
+
+      <details class="block">
+        <summary><h2>Mehrspieler (P2P)</h2></summary>
+        <div id="mp-status">Nicht verbunden — lokaler Testmodus.</div>
+        <button id="btn-mp-erstellen">Spiel erstellen</button>
+        <div id="mp-code-anzeige" hidden></div>
+        <input id="mp-code-eingabe" placeholder="Code eingeben" maxlength="5" style="width:100%;margin-top:6px;padding:8px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text);">
+        <button id="btn-mp-beitreten">Spiel beitreten</button>
+      </details>
+
+      <div class="block span-2">
         <h2>Würfel-Log</h2>
         <div id="log"></div>
       </div>
