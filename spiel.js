@@ -556,7 +556,7 @@ function updatePanel() {
 
   const rundenleiste = document.getElementById("rundenleiste");
   if (rundenleiste) {
-    rundenleiste.style.backgroundColor = aktiverSpielerObj.farbe;
+    rundenleiste.style.setProperty("--spielerfarbe", aktiverSpielerObj.farbe);
     document.getElementById("rundenleiste-spieler").textContent =
       `Am Zug: ${spielerName}${aktiverSpielerObj.istBot ? " (KI)" : ""}`;
     const kurzPhase = {
@@ -568,6 +568,16 @@ function updatePanel() {
       verschiebenModus ? "Verschieben" :
       belagerungModus ? "Belagerung" :
       bombardierungModus ? "Bombardierung" : kurzPhase;
+    // Balken zweckentfremdet als "Weltherrschafts"-Anzeige statt reiner Deko: Anteil der
+    // Gebiete, die dem aktiven Spieler gehören, an allen vergebenen Gebieten -- passt zur
+    // Boss-Leisten-Optik (Balken = Fortschritt/Macht) und ist im Risiko-Kontext aussagekräftiger
+    // als z.B. ein reiner Rundenzähler, den es bisher gar nicht gibt.
+    const alleGebiete = Object.values(territorien);
+    const eigene = alleGebiete.filter((t) => t.owner === aktiverSpieler).length;
+    const anteil = alleGebiete.length ? Math.round((eigene / alleGebiete.length) * 100) : 0;
+    const balken = document.getElementById("rundenleiste-balken-fuellung");
+    balken.style.width = anteil + "%";
+    balken.title = `${eigene} von ${alleGebiete.length} Gebieten (${anteil}%)`;
   }
 
   if (phase === "verstaerkung") {

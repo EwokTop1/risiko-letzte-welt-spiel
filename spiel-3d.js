@@ -44,6 +44,120 @@ function macheZahlenSprite(text) {
   return sprite;
 }
 
+// Welcher Terrain-Deko-Typ zu welchem Kontinent passt -- grobe, aber klar unterscheidbare
+// Biome, passend zum Kontinent-Konzept (siehe Risiko_TODO.md): Arktis=Eis, die drei grünen
+// klassischen Kontinente=Wald, die trockenen/warmen=Wüste, "Der Bruch"=zerstörtes Ödland,
+// "Konstrukt"=künstliche Tech-Landschaft, Aquanova-Knoten=Ozean-Plattformen.
+const TERRAIN_TYP_NACH_KONTINENT = {
+  arktis: "eis", na: "wald", europa: "wald", sa: "wald",
+  asien: "wueste", afrika: "wueste", australien: "wueste",
+  bruch: "bruch", konstrukt: "konstrukt",
+  aqua0: "wasser", aqua1: "wasser", aqua2: "wasser", aqua3: "wasser",
+};
+
+function hashSeed3D(text) {
+  let h = 0;
+  for (let i = 0; i < text.length; i++) h = (h * 31 + text.charCodeAt(i)) >>> 0;
+  return h;
+}
+function erzeugeZufall3D(seed) {
+  let a = seed;
+  return function () {
+    a |= 0; a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function punktInPolygon3D(punkt, polygon) {
+  let innen = false;
+  const [px, py] = punkt;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const [xi, yi] = polygon[i], [xj, yj] = polygon[j];
+    const schneidet = yi > py !== yj > py && px < ((xj - xi) * (py - yi)) / (yj - yi) + xi;
+    if (schneidet) innen = !innen;
+  }
+  return innen;
+}
+
+// Eine einzelne Deko-Instanz (Baum, Eiskristall, Dünenkegel, Bruch-Zacke, Konstrukt-Block
+// oder Wasserplattform-Pfeiler) für ein gegebenes Biom. Groesse/Rotation leicht per rnd()
+// variiert, damit ein Gebiet mit mehreren Deko-Objekten nicht wie geklont aussieht.
+function macheDekoMesh(typ, rnd) {
+  let geo, farbe, hoehe;
+  switch (typ) {
+    case "wald": {
+      const gruppe = new THREE.Group();
+      const stammH = 3 + rnd() * 1.5;
+      const stamm = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.8, stammH, 5), new THREE.MeshStandardMaterial({ color: 0x5c4324, roughness: 1 }));
+      stamm.position.y = stammH / 2;
+      gruppe.add(stamm);
+      const kroneH = 5 + rnd() * 3;
+      const krone = new THREE.Mesh(new THREE.ConeGeometry(2.6 + rnd(), kroneH, 6), new THREE.MeshStandardMaterial({ color: 0x2f6b3a, roughness: 0.95 }));
+      krone.position.y = stammH + kroneH / 2.3;
+      gruppe.add(krone);
+      return gruppe;
+    }
+    case "eis":
+      geo = new THREE.ConeGeometry(1.8 + rnd() * 1.2, 6 + rnd() * 5, 5);
+      farbe = 0xdff3f8;
+      break;
+    case "wueste":
+      geo = new THREE.ConeGeometry(3 + rnd() * 2, 3 + rnd() * 1.5, 8);
+      farbe = 0xcaa25e;
+      break;
+    case "bruch":
+      geo = new THREE.ConeGeometry(1.2 + rnd(), 7 + rnd() * 6, 4);
+      farbe = 0x8a3324;
+      break;
+    case "konstrukt":
+      hoehe = 5 + rnd() * 6;
+      geo = new THREE.BoxGeometry(3 + rnd(), hoehe, 3 + rnd());
+      farbe = 0xaab2bd;
+      break;
+    default: // wasser -- kleine Plattform-Pfeiler, wie Beine eines Offshore-Rigs
+      hoehe = 6 + rnd() * 4;
+      geo = new THREE.CylinderGeometry(1, 1.4, hoehe, 6);
+      farbe = 0x2f7d82;
+      break;
+  }
+  const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: farbe, roughness: 0.85 }));
+  if (typ !== "wald") mesh.position.y = geo.parameters.height / 2;
+  return mesh;
+}
+
+// Streut deterministisch ein paar Deko-Objekte über die Fläche eines Gebiets (Rejection
+// Sampling im Bounding-Box, verworfen wenn außerhalb des Polygons). Anzahl grob an die
+// Bounding-Box-Fläche gekoppelt, gedeckelt, damit sehr große Gebiete (z.B. in Asien) nicht
+// mit hunderten Objekten die Framerate belasten.
+function erzeugeTerrainDeko(gebiet, kontinentId, dekoGruppe) {
+  const typ = TERRAIN_TYP_NACH_KONTINENT[kontinentId];
+  if (!typ) return;
+  const polygon = gebiet.polygon;
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  polygon.forEach(([x, y]) => { minX = Math.min(minX, x); maxX = Math.max(maxX, x); minY = Math.min(minY, y); maxY = Math.max(maxY, y); });
+  const flaecheNaeherung = (maxX - minX) * (maxY - minY);
+  const rnd = erzeugeZufall3D(hashSeed3D(gebiet.id));
+  const anzahl = Math.max(1, Math.min(6, Math.round(flaecheNaeherung / 900)));
+
+  for (let i = 0; i < anzahl; i++) {
+    let punkt = null;
+    for (let versuch = 0; versuch < 12; versuch++) {
+      const kandidat = [minX + rnd() * (maxX - minX), minY + rnd() * (maxY - minY)];
+      if (punktInPolygon3D(kandidat, polygon)) { punkt = kandidat; break; }
+    }
+    if (!punkt) continue;
+    const deko = macheDekoMesh(typ, rnd);
+    const skala = 0.7 + rnd() * 0.6;
+    deko.scale.setScalar(skala);
+    deko.rotation.y = rnd() * Math.PI * 2;
+    deko.position.x += punkt[0];
+    deko.position.z += punkt[1];
+    deko.position.y += HOEHE_GEBIET;
+    dekoGruppe.add(deko);
+  }
+}
+
 function initKarte3D() {
   if (szene3D) { aktualisiere3D(); return; }
 
@@ -88,11 +202,18 @@ function initKarte3D() {
   const markerGruppe = new THREE.Group();
   scene.add(markerGruppe);
 
+  // Statische Terrain-Deko (Bäume, Eiskristalle, Dünen, ...) -- einmalig beim Aufbau erzeugt,
+  // ändert sich nie über den Spielverlauf, deshalb NICHT Teil von aktualisiere3D().
+  const dekoGruppe = new THREE.Group();
+  dekoGruppe.userData.nichtAnklickbar = true;
+  scene.add(dekoGruppe);
+
   const meshById = {};
 
   KARTENDATEN.kontinente.forEach((k) => {
     k.gebiete.forEach((g) => {
       if (!g.polygon || g.polygon.length < 3) return;
+      erzeugeTerrainDeko(g, k.id, dekoGruppe);
       // SVG-Koordinaten (x nach rechts, y nach unten) -> 3D-Ebene (x, z), y bleibt "oben"
       // für die Extrusionshöhe. z = SVG-y, damit die Karte in der 3D-Szene nicht gespiegelt wird.
       const form = new THREE.Shape(g.polygon.map(([x, y]) => new THREE.Vector2(x, -y)));
