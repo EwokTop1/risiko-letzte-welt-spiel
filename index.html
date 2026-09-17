@@ -8,9 +8,18 @@
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <meta name="theme-color" content="#0a0e13">
 <link rel="stylesheet" href="style.css">
+<script>
+  // Vor dem ersten Rendern setzen (kein Flackern): gemerkte Wahl aus localStorage,
+  // sonst Standard bleibt Dunkel-Theme (bisheriges Verhalten unverändert).
+  try {
+    const gemerkt = localStorage.getItem("risiko-theme");
+    if (gemerkt === "hell") document.documentElement.setAttribute("data-theme", "hell");
+  } catch (e) {}
+</script>
 </head>
 <body>
   <header>
+    <button id="btn-theme" title="Hell/Dunkel umschalten" style="width:auto;float:right;padding:6px 10px;margin-top:0">🌙</button>
     <h1>Risiko – Letzte Welt <span class="tag">Grundgerüst · Testmodus</span></h1>
     <p class="hinweis">Platzhalter-Karte, Platzhalter-Verteilung (abwechselnd Spieler 1/2). Standard-Risiko-Kampf mit Rundensystem, Ressourcensystem, alle 23 Gebäude der Mastertabelle baubar, plus Sondermechaniken: Cyberangriffsmarker, Belagerung, Bombardierung, Reparatur nach Besitzwechsel. Ein Teil der Verteidigungs-/Infrastruktureffekte ist noch nicht verdrahtet (im Bau-Menü als "Effekt folgt" markiert).</p>
   </header>
@@ -126,6 +135,23 @@
     document.getElementById("btn-mp-beitreten").addEventListener("click", () => {
       if (mpCodeEingabe.value.trim()) NETZWERK.spielBeitreten(mpCodeEingabe.value, onStatus);
     });
+
+    const btnTheme = document.getElementById("btn-theme");
+    function themeIconAktualisieren() {
+      btnTheme.textContent = document.documentElement.getAttribute("data-theme") === "hell" ? "☀️" : "🌙";
+    }
+    btnTheme.addEventListener("click", () => {
+      const hell = document.documentElement.getAttribute("data-theme") === "hell";
+      if (hell) {
+        document.documentElement.removeAttribute("data-theme");
+        try { localStorage.setItem("risiko-theme", "dunkel"); } catch (e) {}
+      } else {
+        document.documentElement.setAttribute("data-theme", "hell");
+        try { localStorage.setItem("risiko-theme", "hell"); } catch (e) {}
+      }
+      themeIconAktualisieren();
+    });
+    themeIconAktualisieren();
   </script>
 </body>
 </html>

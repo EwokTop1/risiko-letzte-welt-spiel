@@ -8,6 +8,19 @@
   --p1:#d1495b;
   --p2:#3a86ff;
   --neutral:#5a6472;
+  --board-bg:radial-gradient(ellipse at 50% 40%, #163049 0%, #0c1b2c 55%, #081422 100%);
+}
+
+/* Helles Theme, manuell umschaltbar (Button, merkt sich Wahl in localStorage).
+   Spieler-/Truppenfarben (--p1/--p2/--neutral) und Gebäude-Kategoriefarben bleiben
+   gleich, da sie schon auf dunklem wie hellem Grund ausreichend Kontrast haben. */
+:root[data-theme="hell"]{
+  --bg:#f4f6f9;
+  --surface:#ffffff;
+  --border:#d7dee6;
+  --text:#1a2330;
+  --text-muted:#5a6472;
+  --board-bg:radial-gradient(ellipse at 50% 40%, #dceaf7 0%, #eef3f8 55%, #f4f6f9 100%);
 }
 
 *{box-sizing:border-box}
@@ -39,7 +52,7 @@ main{display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap}
 .board-wrap{
   flex:1 1 640px;
   min-width:300px;
-  background:radial-gradient(ellipse at 50% 40%, #163049 0%, #0c1b2c 55%, #081422 100%);
+  background:var(--board-bg);
   border:1px solid var(--border);
   border-radius:12px;
   padding:10px;

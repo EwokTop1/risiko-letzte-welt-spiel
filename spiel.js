@@ -34,6 +34,11 @@ const SPIELER = [
 // Verzögerung, bevor der Bot nach Rundenbeginn zu handeln anfängt (nur Optik, kein Balancing).
 const BOT_VERZOEGERUNG_MS = 500;
 const ENERGIE_MAX = 50;
+// Obergrenzen für Metall/Nahrung/Treibstoff: eigener Zusatz (bestätigt 17.09.2026), da das
+// Regelwerk dafür keine Zahl nennt (nur Energie hat mit 50 eine feste Grenze). Verhindert das
+// im Playtesting gefundene Aufstauen vierstelliger Ressourcenmengen, wenn nach ausgebauter
+// Wirtschaft/Verteidigung nichts mehr zum Ausgeben bleibt.
+const RESSOURCEN_MAX = 100;
 const CYBERMARKER_MAX = 5;
 const CYBERMARKER_KOSTEN = 25;
 const BOMBARDIERUNG_KOSTEN = 15;
@@ -146,7 +151,8 @@ function bezahlen(spielerId, kosten) {
 function gutschreiben(spielerId, art, menge) {
   const r = SPIELER.find((s) => s.id === spielerId).ressourcen;
   r[art] += menge;
-  if (art === "energie") r.energie = Math.min(r.energie, ENERGIE_MAX);
+  const grenze = art === "energie" ? ENERGIE_MAX : RESSOURCEN_MAX;
+  r[art] = Math.min(r[art], grenze);
 }
 
 function aktiveGebaeude(t, typ) {
@@ -509,7 +515,7 @@ function render() {
 
 function ressourcenText(spielerId) {
   const r = SPIELER.find((s) => s.id === spielerId).ressourcen;
-  return `Metall ${r.metall} · Nahrung ${r.nahrung} · Treibstoff ${r.treibstoff} · Energie ${r.energie}/${ENERGIE_MAX}`;
+  return `Metall ${r.metall}/${RESSOURCEN_MAX} · Nahrung ${r.nahrung}/${RESSOURCEN_MAX} · Treibstoff ${r.treibstoff}/${RESSOURCEN_MAX} · Energie ${r.energie}/${ENERGIE_MAX}`;
 }
 
 function updatePanel() {
