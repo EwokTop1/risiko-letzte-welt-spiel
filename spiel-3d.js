@@ -96,7 +96,7 @@ const TERRAIN_TYP_NACH_KONTINENT = {
   arktis: "eis", na: "wald", europa: "wald", sa: "wald",
   asien: "wueste", afrika: "wueste", australien: "wueste",
   bruch: "bruch", konstrukt: "konstrukt",
-  aqua0: "wasser", aqua1: "wasser", aqua2: "wasser", aqua3: "wasser",
+  aqua0: "wasser", aqua1: "wasser", aqua2: "wasser", aqua3: "wasser", ozeane: "wasser",
 };
 
 function hashSeed3D(text) {
@@ -286,6 +286,17 @@ function initKarte3D() {
 
   const gebietGruppe = new THREE.Group();
   scene.add(gebietGruppe);
+
+  // Durchgehende Wasser-Grundebene knapp unter den Ozean-Gebiets-Blöcken -- dieselbe
+  // Absicherung wie in der 2D-Karte: verhindert, dass kleine Geometrie-Lücken zwischen
+  // einzelnen Wasser-Gebieten den dunklen Szenenhintergrund durchscheinen lassen.
+  const wasserGrund = new THREE.Mesh(
+    new THREE.PlaneGeometry(1400, 820),
+    new THREE.MeshStandardMaterial({ color: 0x1f5f7a, roughness: 0.9 })
+  );
+  wasserGrund.rotation.x = -Math.PI / 2;
+  wasserGrund.position.set(600, -1, 310);
+  scene.add(wasserGrund);
 
   // Eigene Gruppe für Truppen- und Gebäude-Marker, wird bei jedem aktualisiere3D() komplett
   // neu befüllt (Anzahl Truppen/Gebäude ändert sich laufend) -- getrennt von gebietGruppe,

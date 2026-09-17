@@ -23,6 +23,7 @@ const KONTINENT_FARBE = {
   arktis: "#dce8ec", na: "#6a9b5e", europa: "#7ba85f", asien: "#a08a52",
   afrika: "#c2a05a", bruch: "#a15c3e", sa: "#4c9b6a", australien: "#c17a4a",
   konstrukt: "#8a92a0", aqua0: "#3f9c9a", aqua1: "#3f9c9a", aqua2: "#3f9c9a", aqua3: "#3f9c9a",
+  ozeane: "#1f5f7a",
 };
 const SPIELER = [
   { id: 1, name: "Spieler 1", farbe: "#d1495b", ressourcen: { metall: 5, nahrung: 5, treibstoff: 5, energie: 10 }, cybermarker: 0, istBot: false },
@@ -227,6 +228,7 @@ function resetTerritorien() {
       territorien[g.id] = {
         id: g.id,
         continentId: k.id,
+        typ: g.typ ?? "land", // "wasser" für Ozean-Gebiete, siehe werkzeuge/wasserfelder-generieren.js
         polygon: g.polygon,
         x: g.x,
         y: g.y,
@@ -423,6 +425,19 @@ KARTENDATEN.kontinente.forEach((k) => {
   g.setAttribute("filter", "url(#terrain-koernung)");
   svg.appendChild(g);
 
+  // Durchgehende Wasser-Grundfläche HINTER den einzelnen Ozean-Gebieten: Land und Wasser
+  // werden beim Rendern unabhängig geglättet (glattPath), wodurch an der Küste minimale
+  // Lücken entstehen könnten, wenn Meeres-Polygone nicht exakt Kante an Kante sitzen. Mit
+  // dieser Grundfläche zeigt eine solche Lücke höchstens Wasserfarbe statt der dunklen
+  // Buchseite -- unabhängig von Rundungsungenauigkeiten der Kartengeometrie.
+  if (k.id === "ozeane") {
+    const grund = ns("path");
+    grund.setAttribute("d", glattPath(k.umriss));
+    grund.setAttribute("fill", KONTINENT_FARBE.ozeane);
+    grund.setAttribute("pointer-events", "none");
+    g.appendChild(grund);
+  }
+
   k.gebiete.forEach((geb) => {
     if (!geb.polygon) return;
     const p = ns("path");
@@ -448,10 +463,15 @@ KARTENDATEN.kontinente.forEach((k) => {
     iconGruppeById[geb.id] = iconGruppe;
   });
 
-  const border = ns("path");
-  border.setAttribute("d", glattPath(k.umriss));
-  border.setAttribute("class", "cont-border");
-  svg.appendChild(border);
+  // Kein Kontinent-Rand für "ozeane": dessen umriss ist die volle Zeichenfläche (die
+  // Wasser-Gebiete sitzen jeweils einzeln darin), ein Rand darum würde wie ein Rahmen um
+  // die gesamte Karte aussehen statt wie eine Küstenlinie.
+  if (k.id !== "ozeane") {
+    const border = ns("path");
+    border.setAttribute("d", glattPath(k.umriss));
+    border.setAttribute("class", "cont-border");
+    svg.appendChild(border);
+  }
 });
 
 svg.appendChild(iconEbene);
@@ -603,7 +623,9 @@ function updatePanel() {
   btnZugBeenden.disabled = phase !== "spielzug" || !amZug();
 
   bauAuswahl.hidden = !bauZiel;
-  if (bauZiel) {
+  if (bauZiel && territorien[bauZiel].typ === "wasser") {
+    bauAuswahl.innerHTML = `<div style="font-size:12px;color:var(--text-muted)">Auf Wasser-Gebieten kann noch nicht gebaut werden (keine Hafen-/Wassergebäude im Regelwerk definiert).</div>`;
+  } else if (bauZiel) {
     const kostenText = (kosten) => Object.entries(kosten).map(([k, v]) => `${v} ${k}`).join(", ");
     bauAuswahl.innerHTML = Object.entries(GEBAEUDE_TYPEN).map(([typ, info2]) => {
       const geht = kannBauen(aktiverSpieler, bauZiel, typ);
@@ -834,6 +856,11 @@ function verschiebenTruppen(von, nach) {
 function kannBauen(spielerId, gebietId, typ) {
   const t = territorien[gebietId];
   const info = GEBAEUDE_TYPEN[typ];
+  // Alle 26 Gebäudetypen der Mastertabelle sind für Landinfrastruktur ausgelegt (Regelwerk
+  // kennt noch keine Wasser-/Hafengebäude) -- auf Ozean-Gebieten ist Bauen deshalb vorerst
+  // komplett gesperrt, bis dafür eigene Gebäude/Regeln definiert sind (siehe Risiko_TODO.md,
+  // "Wasserfelder" als eigener, noch nicht bestätigter Vorschlag).
+  if (t.typ === "wasser") return false;
   // Regelwerk §5: während der Reparatur können auf dem Gebiet keine neuen Gebäude gebaut werden
   if (t.gebaeude.some((b) => b.beschaedigt)) return false;
   if (t.gebaeude.some((b) => b.typ === typ)) return false;
