@@ -23,6 +23,50 @@ function macheGebaeudeGeometrie(kategorie) {
   }
 }
 
+// Höhe der kompletten Soldaten-Figur (Sockel bis Kopf) -- feste Größe wie bei echten
+// Risiko-Spielfiguren: die Anzahl Truppen wird nicht über die Größe der Figur ausgedrückt
+// (eine gestreckte Figur pro Truppenzahl sähe verzerrt aus), sondern weiterhin über das
+// Zahlen-Schild darüber.
+const FIGUR_HOEHE = 19;
+
+// Eine einzelne Spielfigur, angelehnt an die klassische Risiko-Infanterie-Figur: Sockel,
+// stehender Körper, Kopf, Gewehr schräg über der Brust -- alles in Besitzerfarbe, wie bei
+// den echten Plastikfiguren (eine Farbe pro Spieler, keine Terrain-/Detailfarben am Stück).
+function macheSoldatFigur(farbeHex) {
+  const material = new THREE.MeshStandardMaterial({ color: farbeHex, roughness: 0.45, metalness: 0.25 });
+  const gruppe = new THREE.Group();
+
+  const sockel = new THREE.Mesh(new THREE.CylinderGeometry(5.5, 6.2, 1.6, 14), material);
+  sockel.position.y = 0.8;
+  gruppe.add(sockel);
+
+  const beine = new THREE.Mesh(new THREE.CylinderGeometry(2.1, 2.7, 6.5, 10), material);
+  beine.position.y = 1.6 + 3.25;
+  gruppe.add(beine);
+
+  const koerper = new THREE.Mesh(new THREE.CylinderGeometry(2.5, 3, 6.5, 10), material);
+  koerper.position.y = 1.6 + 6.5 + 3.25;
+  gruppe.add(koerper);
+
+  const schultern = new THREE.Mesh(new THREE.SphereGeometry(2.7, 10, 8), material);
+  schultern.scale.set(1, 0.55, 1);
+  schultern.position.y = 1.6 + 6.5 + 6.5;
+  gruppe.add(schultern);
+
+  const kopf = new THREE.Mesh(new THREE.SphereGeometry(1.9, 10, 8), material);
+  kopf.position.y = 1.6 + 6.5 + 6.5 + 2.1;
+  gruppe.add(kopf);
+
+  // Gewehr diagonal über den Oberkörper -- genau die Silhouette, an der man eine klassische
+  // Risiko-Infanteriefigur sofort erkennt.
+  const gewehr = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.45, 9, 6), material);
+  gewehr.rotation.z = Math.PI / 3;
+  gewehr.position.set(2.1, 1.6 + 6.5 + 4.2, 0.6);
+  gruppe.add(gewehr);
+
+  return gruppe;
+}
+
 // Kleines, immer zur Kamera ausgerichtetes Zahlen-Schild -- für die exakte Truppenzahl,
 // die sich aus einer reinen Geometriegröße (anders als bei der 2D-Textbeschriftung) nicht
 // zuverlässig ablesen ließe.
@@ -271,14 +315,17 @@ function initKarte3D() {
 function markerGruppeLeeren(gruppe) {
   // Geometrien/Texturen der alten Marker sauber freigeben, sonst wächst der GPU-Speicher
   // unbegrenzt -- render() (und damit aktualisiere3D()) läuft bei jeder Spielaktion, bei
-  // einem Bot-Zug ggf. dutzendfach hintereinander.
+  // einem Bot-Zug ggf. dutzendfach hintereinander. traverse() statt nur die direkten Kinder,
+  // da die Soldatenfigur selbst eine Gruppe aus mehreren Meshes ist (Sockel/Beine/Körper/...).
   while (gruppe.children.length) {
     const obj = gruppe.children.pop();
-    if (obj.geometry) obj.geometry.dispose();
-    if (obj.material) {
-      if (obj.material.map) obj.material.map.dispose();
-      obj.material.dispose();
-    }
+    obj.traverse((teil) => {
+      if (teil.geometry) teil.geometry.dispose();
+      if (teil.material) {
+        if (teil.material.map) teil.material.map.dispose();
+        teil.material.dispose();
+      }
+    });
   }
 }
 
@@ -298,19 +345,17 @@ function aktualisiere3D() {
     const c = centroidById[t.id];
     if (!c) return;
 
-    // Truppen-Einheit: kleiner Sockel + Spitze in Besitzerfarbe, Höhe wächst mit der
-    // Truppenzahl (gedeckelt, sonst würden große Stapel die Kamera zupflastern), plus
-    // Zahlen-Schild für den exakten Wert.
-    const truppenHoehe = Math.min(34, 10 + t.truppen * 1.6);
-    const sockel = new THREE.Mesh(
-      new THREE.CylinderGeometry(6, 7, truppenHoehe, 8),
-      new THREE.MeshStandardMaterial({ color: besitzFarbe, roughness: 0.5, metalness: 0.2 })
-    );
-    sockel.position.set(c[0], HOEHE_GEBIET + truppenHoehe / 2, c[1]);
-    szene3D.markerGruppe.add(sockel);
+    // Truppen-Einheit: eine feste Risiko-Soldatenfigur in Besitzerfarbe (keine verzerrende
+    // Größenskalierung nach Truppenzahl -- wie beim echten Spiel), plus Zahlen-Schild für
+    // den exakten Wert darüber. Bei Auswahl/Ziel etwas größer, als zusätzliche Hervorhebung
+    // neben dem weißen Gebiets-Rand.
+    const figur = macheSoldatFigur(besitzFarbe);
+    figur.scale.setScalar(ausgewaehltOderZiel ? 1.2 : 1);
+    figur.position.set(c[0], HOEHE_GEBIET, c[1]);
+    szene3D.markerGruppe.add(figur);
 
     const schild = macheZahlenSprite(String(t.truppen));
-    schild.position.set(c[0], HOEHE_GEBIET + truppenHoehe + 10, c[1]);
+    schild.position.set(c[0], HOEHE_GEBIET + FIGUR_HOEHE + 8, c[1]);
     szene3D.markerGruppe.add(schild);
 
     // Gebäude als kleine, nach Kategorie geformte/gefärbte Marker in einer Reihe --
