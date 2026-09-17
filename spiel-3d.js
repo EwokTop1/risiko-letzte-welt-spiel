@@ -1,0 +1,215 @@
+// Echte 3D-Ansicht der Karte (three.js), zusätzlich zur bestehenden 2D-SVG-Karte.
+// Nutzt dieselben Kartendaten (KARTENDATEN) und denselben Spielzustand (territorien,
+// ausgewaehlt, ziel, onClickGebiet) -- die 3D-Szene ist nur eine zweite Darstellung,
+// keine zweite Spiellogik. Wird lazy initialisiert, erst beim ersten Umschalten auf 3D
+// (kein WebGL-Overhead, solange niemand die 3D-Ansicht nutzt).
+
+let szene3D = null;
+const HOEHE_GEBIET = 6; // Extrusionstiefe der Gebiets-Blöcke -- Modulebene, da auch die
+                        // Marker-Funktionen wissen müssen, wo die Kartenoberfläche liegt.
+
+// Gleiche Kategoriefarben wie die 2D-Bau-Icons (siehe .icon-wirtschaft/-verteidigung/
+// -infrastruktur/-sonder in style.css), damit beide Ansichten farblich übereinstimmen.
+const KATEGORIE_FARBE_3D = { wirtschaft: 0xd9a441, verteidigung: 0xd1495b, infrastruktur: 0x4c9bd1, sonder: 0x9a6fd1 };
+
+function macheGebaeudeGeometrie(kategorie) {
+  // Eine eigene Grundform pro Kategorie, analog zu den unterschiedlichen 2D-Icon-Formen --
+  // in 3D per Primitiv statt per SVG-Pfad.
+  switch (kategorie) {
+    case "wirtschaft": return new THREE.CylinderGeometry(4, 4, 8, 10);
+    case "verteidigung": return new THREE.ConeGeometry(5, 9, 4);
+    case "infrastruktur": return new THREE.BoxGeometry(7, 8, 7);
+    default: return new THREE.OctahedronGeometry(5.5);
+  }
+}
+
+// Kleines, immer zur Kamera ausgerichtetes Zahlen-Schild -- für die exakte Truppenzahl,
+// die sich aus einer reinen Geometriegröße (anders als bei der 2D-Textbeschriftung) nicht
+// zuverlässig ablesen ließe.
+function macheZahlenSprite(text) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 64; canvas.height = 64;
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = "rgba(10,14,19,0.75)";
+  ctx.beginPath(); ctx.arc(32, 32, 27, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = "#fff";
+  ctx.font = "bold 30px system-ui, sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(text, 32, 35);
+  const textur = new THREE.CanvasTexture(canvas);
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: textur, depthTest: false }));
+  sprite.scale.set(16, 16, 1);
+  sprite.renderOrder = 999;
+  return sprite;
+}
+
+function initKarte3D() {
+  if (szene3D) { aktualisiere3D(); return; }
+
+  const container = document.getElementById("board-3d");
+  const breite = container.clientWidth || 1200;
+  const hoehe = container.clientHeight || 620;
+
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x0c1b2c);
+
+  const camera = new THREE.PerspectiveCamera(45, breite / hoehe, 1, 5000);
+  // Kartenmittelpunkt liegt bei ca. (600, 310) im 1200x620-Koordinatenraum der SVG-Daten.
+  camera.position.set(600, 650, 900);
+
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setSize(breite, hoehe);
+  renderer.setPixelRatio(window.devicePixelRatio || 1);
+  container.innerHTML = "";
+  container.appendChild(renderer.domElement);
+
+  // OrbitControls: Drehen per Linksklick-Ziehen, Verschieben (Pan) per Rechtsklick-Ziehen
+  // oder Zweifinger-Geste, Zoom per Mausrad -- Standardverhalten, genau die "frei drehbare
+  // und bewegliche Kamera", die für die 3D-Ansicht gewünscht war.
+  const controls = new THREE.OrbitControls(camera, renderer.domElement);
+  controls.target.set(600, 0, 310);
+  controls.maxPolarAngle = Math.PI * 0.49; // nicht unter die Kartenebene schwenken
+  controls.minDistance = 150;
+  controls.maxDistance = 2200;
+  controls.update();
+
+  scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+  const sonne = new THREE.DirectionalLight(0xffffff, 0.8);
+  sonne.position.set(400, 800, 200);
+  scene.add(sonne);
+
+  const gebietGruppe = new THREE.Group();
+  scene.add(gebietGruppe);
+
+  // Eigene Gruppe für Truppen- und Gebäude-Marker, wird bei jedem aktualisiere3D() komplett
+  // neu befüllt (Anzahl Truppen/Gebäude ändert sich laufend) -- getrennt von gebietGruppe,
+  // damit das Klick-Raycasting weiterhin nur die Gebiets-Flächen trifft, nicht die Marker.
+  const markerGruppe = new THREE.Group();
+  scene.add(markerGruppe);
+
+  const meshById = {};
+
+  KARTENDATEN.kontinente.forEach((k) => {
+    k.gebiete.forEach((g) => {
+      if (!g.polygon || g.polygon.length < 3) return;
+      // SVG-Koordinaten (x nach rechts, y nach unten) -> 3D-Ebene (x, z), y bleibt "oben"
+      // für die Extrusionshöhe. z = SVG-y, damit die Karte in der 3D-Szene nicht gespiegelt wird.
+      const form = new THREE.Shape(g.polygon.map(([x, y]) => new THREE.Vector2(x, -y)));
+      const geometrie = new THREE.ExtrudeGeometry(form, { depth: HOEHE_GEBIET, bevelEnabled: false });
+      geometrie.rotateX(-Math.PI / 2);
+      const material = new THREE.MeshStandardMaterial({ color: 0x808080, roughness: 0.9, metalness: 0.05 });
+      const mesh = new THREE.Mesh(geometrie, material);
+      mesh.userData.gebietId = g.id;
+      gebietGruppe.add(mesh);
+      meshById[g.id] = mesh;
+
+      // Umriss in Besitzerfarbe -- dieselbe Regel wie in der 2D-Karte: Terrainfarbe ist die
+      // Fläche, die Spielerfarbe markiert ausschließlich die Grenze.
+      const kanten = new THREE.EdgesGeometry(geometrie);
+      const rand = new THREE.LineSegments(kanten, new THREE.LineBasicMaterial({ color: 0xffffff, linewidth: 2 }));
+      mesh.add(rand);
+      mesh.userData.randMaterial = rand.material;
+    });
+  });
+
+  // Klick-Auswahl: Raycasting auf die Gebiets-Meshes, ruft dieselbe onClickGebiet()-Funktion
+  // wie die 2D-Karte auf -- ein Klick in 3D wirkt sich exakt so aus wie ein Klick in 2D.
+  const raycaster = new THREE.Raycaster();
+  const maus = new THREE.Vector2();
+  renderer.domElement.addEventListener("click", (ev) => {
+    const rect = renderer.domElement.getBoundingClientRect();
+    maus.x = ((ev.clientX - rect.left) / rect.width) * 2 - 1;
+    maus.y = -((ev.clientY - rect.top) / rect.height) * 2 + 1;
+    raycaster.setFromCamera(maus, camera);
+    const treffer = raycaster.intersectObjects(gebietGruppe.children);
+    if (treffer.length) onClickGebiet(treffer[0].object.userData.gebietId);
+  });
+
+  function animieren() {
+    requestAnimationFrame(animieren);
+    controls.update();
+    renderer.render(scene, camera);
+  }
+  animieren();
+
+  window.addEventListener("resize", () => {
+    if (container.hasAttribute("hidden")) return;
+    const w = container.clientWidth, h = container.clientHeight;
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+    renderer.setSize(w, h);
+  });
+
+  szene3D = { meshById, markerGruppe };
+  aktualisiere3D();
+}
+
+// Wird von render() (spiel.js) nach jeder Zustandsänderung mitaufgerufen, damit 2D- und
+// 3D-Ansicht immer denselben Spielstand zeigen, egal welche gerade sichtbar ist.
+function markerGruppeLeeren(gruppe) {
+  // Geometrien/Texturen der alten Marker sauber freigeben, sonst wächst der GPU-Speicher
+  // unbegrenzt -- render() (und damit aktualisiere3D()) läuft bei jeder Spielaktion, bei
+  // einem Bot-Zug ggf. dutzendfach hintereinander.
+  while (gruppe.children.length) {
+    const obj = gruppe.children.pop();
+    if (obj.geometry) obj.geometry.dispose();
+    if (obj.material) {
+      if (obj.material.map) obj.material.map.dispose();
+      obj.material.dispose();
+    }
+  }
+}
+
+function aktualisiere3D() {
+  if (!szene3D) return;
+  markerGruppeLeeren(szene3D.markerGruppe);
+
+  Object.values(territorien).forEach((t) => {
+    const mesh = szene3D.meshById[t.id];
+    if (!mesh) return;
+    const besitzFarbe = t.owner ? SPIELER.find((s) => s.id === t.owner).farbe : NEUTRAL_FARBE;
+    mesh.material.color.set(t.terrainFarbe);
+    const ausgewaehltOderZiel = t.id === ausgewaehlt || t.id === ziel;
+    mesh.userData.randMaterial.color.set(ausgewaehltOderZiel ? 0xffffff : besitzFarbe);
+    mesh.position.y = ausgewaehltOderZiel ? 4 : 0; // leichtes Anheben statt Weißrand-Dicke in 3D
+
+    const c = centroidById[t.id];
+    if (!c) return;
+
+    // Truppen-Einheit: kleiner Sockel + Spitze in Besitzerfarbe, Höhe wächst mit der
+    // Truppenzahl (gedeckelt, sonst würden große Stapel die Kamera zupflastern), plus
+    // Zahlen-Schild für den exakten Wert.
+    const truppenHoehe = Math.min(34, 10 + t.truppen * 1.6);
+    const sockel = new THREE.Mesh(
+      new THREE.CylinderGeometry(6, 7, truppenHoehe, 8),
+      new THREE.MeshStandardMaterial({ color: besitzFarbe, roughness: 0.5, metalness: 0.2 })
+    );
+    sockel.position.set(c[0], HOEHE_GEBIET + truppenHoehe / 2, c[1]);
+    szene3D.markerGruppe.add(sockel);
+
+    const schild = macheZahlenSprite(String(t.truppen));
+    schild.position.set(c[0], HOEHE_GEBIET + truppenHoehe + 10, c[1]);
+    szene3D.markerGruppe.add(schild);
+
+    // Gebäude als kleine, nach Kategorie geformte/gefärbte Marker in einer Reihe --
+    // dieselbe Begrenzung auf 3 gleichzeitig sichtbare wie im 2D-Icon-Rendering, aus
+    // demselben Grund (mehr wäre auf der kleinen Fläche nicht mehr unterscheidbar).
+    const sichtbar = t.gebaeude.slice(0, 3);
+    const ABSTAND = 13;
+    const startX = c[0] - ((sichtbar.length - 1) * ABSTAND) / 2;
+    sichtbar.forEach((b, i) => {
+      const typ = GEBAEUDE_TYPEN[b.typ];
+      const geo = macheGebaeudeGeometrie(typ.kategorie);
+      const mat = new THREE.MeshStandardMaterial({
+        color: KATEGORIE_FARBE_3D[typ.kategorie] ?? 0xffffff,
+        roughness: 0.6,
+        transparent: !b.fertig,
+        opacity: b.fertig ? 1 : 0.5, // im Bau befindlich -- gleiche Konvention wie 2D-Icons
+      });
+      const marker = new THREE.Mesh(geo, mat);
+      marker.position.set(startX + i * ABSTAND, HOEHE_GEBIET + 5, c[1] + 14);
+      szene3D.markerGruppe.add(marker);
+    });
+  });
+}
